@@ -275,17 +275,40 @@ label.ck input{accent-color:var(--brand);margin:0}
 .composer-input>svg{position:absolute;left:18px;color:var(--faint);width:20px;height:20px;transition:color .15s ease}
 .composer-input:focus-within>svg{color:var(--brand)}
 .composer-input input,.composer-input input:focus{height:60px;border:0;background:transparent;padding:0 18px 0 48px;font-size:16px;border-radius:var(--r-lg) var(--r-lg) 0 0}
-.composer-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:2px 10px 10px 12px}
+.composer-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 12px 12px;flex-wrap:wrap}
+.composer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.composer-cta{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:nowrap}
+.composer-cta .hint{font-size:12px;color:var(--faint);white-space:nowrap}
 .chip{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:999px;border:0;background:var(--muted);color:var(--dim);font-weight:500;font-size:13px;cursor:pointer;white-space:nowrap;transition:background-color .15s ease,color .15s ease}
 .composer.compact .chip{background:#fff}
 .chip svg{width:16px;height:16px}
 .chip:hover,.chip:focus-visible{background:#EDE3DB;color:var(--text)}
 .chip.on,.pick.open .chip{background:var(--brand-soft);color:var(--brand-ink)}
 .hint{font-size:12px;color:var(--faint);margin-right:6px}
-.composer-bar{flex-wrap:nowrap}
-.composer-bar .grow{display:none}
-.composer-bar .hint{flex:1 1 0;min-width:0;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-@media (max-width:560px){.composer-bar{flex-wrap:wrap}}
+
+/* Auto-pilot toggle & status pill */
+.ap-toggle{display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:999px;font-size:13px;font-weight:600;cursor:pointer;user-select:none;border:1px solid transparent;transition:background-color .15s ease,color .15s ease,border-color .15s ease}
+.ap-toggle i.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.ap-toggle.off{background:var(--muted);color:var(--dim);border-color:var(--line-2)}
+.ap-toggle.off i.dot{background:var(--faint)}
+.ap-toggle.off:hover{background:#EDE3DB;color:var(--text);border-color:#D9CCC2}
+.ap-toggle.on{background:var(--brand-soft);color:var(--brand-ink);border-color:var(--brand)}
+.ap-toggle.on i.dot{background:var(--brand);animation:pulse 1.3s infinite}
+.ap-toggle.on:hover{background:#FFDFC8}
+.ap-toggle.sm{height:32px;padding:0 11px;font-size:12px}
+
+.ap-target{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 11px;border-radius:999px;font-size:12px;font-weight:600;background:#EBF7EE;color:#137333;border:1px solid #A8DAB5;white-space:nowrap}
+.ap-target svg{width:14px;height:14px;color:#137333}
+
+.prog-pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;user-select:none;transition:all .15s ease}
+.prog-pill svg{width:14px;height:14px}
+.prog-pill.processing{background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)}
+.prog-pill.uploaded{background:#EBF7EE;color:#137333;border:1px solid #A8DAB5}
+
+@media (max-width:680px){
+  .composer-bar{gap:10px}
+  .composer-cta{width:100%;justify-content:space-between;margin-top:2px}
+}
 .composer-opts{display:grid;grid-template-rows:0fr;opacity:0;transition:grid-template-rows .32s ease,opacity .25s ease}
 .composer-opts.open{grid-template-rows:1fr;opacity:1}
 .composer-opts>.og{min-height:0;overflow:hidden;padding:0 12px;transition:padding .32s ease}
@@ -894,7 +917,8 @@ const I = {
  "signout": "<path d=\"M120,216a8,8,0,0,1-8,8H48a8,8,0,0,1-8-8V40a8,8,0,0,1,8-8h64a8,8,0,0,1,0,16H56V208h56A8,8,0,0,1,120,216Zm109.66-93.66-40-40a8,8,0,0,0-11.32,11.32L204.69,120H112a8,8,0,0,0,0,16h92.69l-26.35,26.34a8,8,0,0,0,11.32,11.32l40-40A8,8,0,0,0,229.66,122.34Z\"/>",
  "shield": "<path d=\"M208,40H48A16,16,0,0,0,32,56v56c0,52.72,25.52,84.67,46.93,102.19,23.06,18.86,46,25.26,47,25.53a8,8,0,0,0,4.2,0c1-.27,23.91-6.67,47-25.53C198.48,196.67,224,164.72,224,112V56A16,16,0,0,0,208,40Zm0,72c0,37.07-13.66,67.16-40.6,89.42A129.3,129.3,0,0,1,128,223.62a128.25,128.25,0,0,1-38.92-21.81C61.82,179.51,48,149.3,48,112l0-56,160,0ZM82.34,141.66a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32l-56,56a8,8,0,0,1-11.32,0Z\"/>",
  "users": "<path d=\"M117.25,157.92a60,60,0,1,0-66.5,0A95.83,95.83,0,0,0,3.53,195.63a8,8,0,1,0,13.4,8.74,80,80,0,0,1,134.14,0,8,8,0,0,0,13.4-8.74A95.83,95.83,0,0,0,117.25,157.92ZM40,108a44,44,0,1,1,44,44A44.05,44.05,0,0,1,40,108Zm210.14,98.7a8,8,0,0,1-11.07-2.33A79.83,79.83,0,0,0,172,168a8,8,0,0,1,0-16,44,44,0,1,0-16.34-84.87,8,8,0,1,1-5.94-14.85,60,60,0,0,1,55.53,105.64,95.83,95.83,0,0,1,47.22,37.71A8,8,0,0,1,250.14,206.7Z\"/>",
- "lock": "<path d=\"M128,112a28,28,0,0,0-8,54.83V184a8,8,0,0,0,16,0V166.83A28,28,0,0,0,128,112Zm0,40a12,12,0,1,1,12-12A12,12,0,0,1,128,152Zm80-72H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z\"/>"
+ "lock": "<path d=\"M128,112a28,28,0,0,0-8,54.83V184a8,8,0,0,0,16,0V166.83A28,28,0,0,0,128,112Zm0,40a12,12,0,1,1,12-12A12,12,0,0,1,128,152Zm80-72H176V56a48,48,0,0,0-96,0V80H48A16,16,0,0,0,32,96V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V96A16,16,0,0,0,208,80ZM96,56a32,32,0,0,1,64,0V80H96ZM208,208H48V96H208V208Z\"/>",
+ "youtube": "<path d=\"M215.8,71.9c-2.4-9-9.5-16.1-18.5-18.5C181,49,128,49,128,49s-53,0-69.3,4.4c-9,2.4-16.1,9.5-18.5,18.5C36,88.2,36,128,36,128s0,39.8,4.2,56.1c2.4,9,9.5,16.1,18.5,18.5C75,207,128,207,128,207s53,0,69.3-4.4c9-2.4,16.1-9.5,18.5-18.5C220,167.8,220,128,220,128s0-39.8-4.2-56.1z M110,158V98l52,30-52,30z\" fill=\"currentColor\"/>"
 };
 const ic = n => `<svg viewBox="0 0 256 256" aria-hidden="true">${I[n]}</svg>`;
 const navIc = (n, v) => ic(S.view === v && I[n + "_f"] ? n + "_f" : n);
@@ -1289,15 +1313,16 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
 
   let uploadBadge = "";
   if (workingJobs.length > 0) {
-    uploadBadge = `<span class="chip" style="background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand);font-weight:600" title="${workingJobs.length} video(s) processing">${ic("scissors")}Clipping: ${jobPct}%</span>`;
+    uploadBadge = `<span class="prog-pill processing" title="${workingJobs.length} video(s) processing in background">${ic("scissors")}<b>${jobPct}%</b> Clipping</span>`;
   } else if (totalPosts > 0) {
-    uploadBadge = `<span class="chip" style="background:${postPct === 100 ? "#e6f9ed" : "var(--brand-soft)"};color:${postPct === 100 ? "#137333" : "var(--brand-ink)"};border:1px solid ${postPct === 100 ? "#34a853" : "var(--brand)"};font-weight:600" title="${postedCount} of ${totalPosts} clips uploaded to YouTube / Rumble">${ic("up")}${postPct}% Uploaded (${postedCount}/${totalPosts})</span>`;
+    const isDone = postPct === 100;
+    uploadBadge = `<span class="prog-pill uploaded" title="${postedCount} of ${totalPosts} clips uploaded to YouTube">${ic(isDone ? "check" : "up")}<b>${postPct}%</b> Uploaded (${postedCount}/${totalPosts})</span>`;
   } else if (allClips.length > 0) {
-    uploadBadge = `<span class="chip" style="color:var(--c-ok);border:1px solid var(--c-ok);font-weight:600" title="All clips processed">${ic("check")}100% Uploaded</span>`;
+    uploadBadge = `<span class="prog-pill uploaded" title="All clips uploaded to YouTube">${ic("check")}<b>100%</b> Uploaded</span>`;
   }
 
   const ap = S.status?.autopilot || {enabled: false};
-  const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand);color:#fff;font-weight:600" : "background:var(--muted);color:var(--dim);border:1px dashed var(--dim)"}" title="Click to toggle Auto-Pilot ON or OFF">${ap.enabled ? "⚡ Auto-Pilot: ON" : "⚪ Auto-Pilot: OFF"}</button>`;
+  const apBtn = `<button type="button" class="ap-toggle sm ${ap.enabled ? "on" : "off"}" data-act="toggleautopilot" title="Click to toggle Auto-Pilot ${ap.enabled ? "OFF (manual mode)" : "ON (auto-upload to YouTube)"}"><i class="dot"></i>${ap.enabled ? "⚡ Auto-Pilot: ON" : "Auto-Pilot: OFF"}</button>`;
 
   let pic = "", subHtml = null, tabs = "";
   if (c) {
@@ -1309,11 +1334,11 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
       `<button class="tabbtn ${S.ctab === k ? "on" : ""}" data-act="tab" data-t="${k}" role="tab" aria-selected="${S.ctab === k}">${ic(i)}${l}${n ? `<span class="n">${n > 99 ? "99+" : n}</span>` : ""}</button>`).join("");
     const liveBtn = c.live_job ? `<button class="btn danger" data-act="stoplive" data-j="${esc(c.live_job)}">${ic("stop")}Stop recording</button>`
                                : `<button class="btn primary" data-act="golive"><span class="rdot"></span>${liveOn(c).length ? "Record live stream" : "Start recording"}</button>`;
-    act = uploadBadge + " " + apBtn + " " + liveBtn;
+    act = uploadBadge + apBtn + liveBtn;
   }
   if (S.view === "overview" || S.view === "library") {
     const L = S.status.links || {};
-    act = uploadBadge + " " + apBtn
+    act = uploadBadge + apBtn
         + (L.repo ? `<a class="btn" href="${esc(L.repo)}" target="_blank" rel="noopener" title="Star PeakCut on GitHub">${ic("github")}<span>Star<span class="long"> on GitHub</span></span></a>` : "")
         + (L.follow ? `<a class="btn primary" href="${esc(L.follow)}" target="_blank" rel="noopener" title="Follow the maker of PeakCut on Instagram">${ic("instagram")}Follow me</a>` : "");
   }
@@ -1417,22 +1442,28 @@ function drawAdd(variant) {
     <div class="composer-input">${ic("link")}<input id="url" placeholder="Paste a YouTube video, playlist, or @channel link (auto-fetches top videos)" autocomplete="off" aria-label="Video link"></div>
     <div class="att" id="att"><div><div class="att-in" id="attIn"></div></div></div>
     <div class="composer-bar">
-      <button type="button" class="chip" data-act="pickfile">${ic("up")}Upload video</button>
-      ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
-      <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
-      ${(() => {
-        const apOn = S.status?.autopilot?.enabled ?? false;
-        let h = `<button type="button" class="chip ${apOn ? "on" : ""}" data-act="toggleautopilot" style="${apOn ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand);font-weight:600" : "color:var(--dim);border:1px dashed var(--dim)"}" title="Click to toggle Auto-Pilot ON or OFF">${apOn ? "⚡ Auto-Pilot: ON" : "⚪ Auto-Pilot: OFF"}</button>`;
-        if (apOn) {
-          if ((S.accounts || []).some(a => a.platform === "youtube"))
-            h += `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to YouTube">${ic("check")}Auto-upload: YouTube</span>`;
-          if ((S.accounts || []).some(a => a.platform === "rumble"))
-            h += `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to Rumble">${ic("check")}Auto-upload: Rumble</span>`;
-        }
-        return h;
-      })()}
-      <span class="grow"></span><span class="hint">or drop a video file here</span>
-      <button class="btn primary" id="goBtn">${ic("scissors")}Make clips</button>
+      <div class="composer-actions">
+        <button type="button" class="chip" data-act="pickfile">${ic("up")}Upload video</button>
+        ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
+        <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
+        ${(() => {
+          const apOn = S.status?.autopilot?.enabled ?? false;
+          let h = `<button type="button" class="ap-toggle ${apOn ? "on" : "off"}" data-act="toggleautopilot" title="Toggle Auto-Pilot: ${apOn ? "ON (auto-upload to YouTube)" : "OFF (manual mode, clips saved for review)"}">
+            <i class="dot"></i>${apOn ? "⚡ Auto-Pilot: ON" : "Auto-Pilot: OFF"}
+          </button>`;
+          if (apOn) {
+            const yt = (S.accounts || []).find(a => a.platform === "youtube");
+            if (yt) {
+              h += `<span class="ap-target" title="New clips will be automatically uploaded to YouTube channel @${esc(yt.name)}">${ic("youtube")}@${esc(yt.name)}</span>`;
+            }
+          }
+          return h;
+        })()}
+      </div>
+      <div class="composer-cta">
+        <span class="hint">or drop a video file here</span>
+        <button class="btn primary" id="goBtn">${ic("scissors")}Make clips</button>
+      </div>
     </div>
     <div class="composer-opts" inert><div class="og">
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
@@ -1749,9 +1780,12 @@ async function makeClips() {
 function scoreCls(s) { return s >= 80 ? "s-hi" : s >= 60 ? "s-mid" : ""; }
 function postPills(c) {
   return Object.values(c.posts || {}).filter(p => p.status !== "cancelled").map(p => {
-    const cls = p.status === "posted" ? "ok" : p.status === "failed" ? "bad" : "warn";
-    const txt = `${esc(p.account_name)} · ${p.status === "scheduled" ? clock(p.due_at) : p.status}`;
-    return p.url ? `<a class="pill ${cls}" href="${esc(p.url)}" target="_blank" rel="noopener">${txt}</a>` : `<span class="pill ${cls}" title="${esc(p.error || "")}">${txt}</span>`;
+    const isOk = p.status === "posted";
+    const cls = isOk ? "ok" : p.status === "failed" ? "bad" : "warn";
+    const iconSvg = p.platform === "youtube" ? ic("youtube") : "";
+    const statusTxt = isOk ? "Uploaded" : p.status === "scheduled" ? clock(p.due_at) : p.status;
+    const txt = `${iconSvg}<b>${esc(p.account_name)}</b> · ${statusTxt}`;
+    return p.url ? `<a class="pill ${cls}" href="${esc(p.url)}" target="_blank" rel="noopener" title="Open video in new tab">${txt}</a>` : `<span class="pill ${cls}" title="${esc(p.error || "")}">${txt}</span>`;
   }).join("");
 }
 function clipHtml(j, c) {
@@ -2496,7 +2530,9 @@ document.addEventListener("click", async e => {
       try {
         await send("/api/autopilot", {enabled: next});
         S.status = await api("/api/status");
-        toast(next ? "⚡ Auto-Pilot turned ON: clips will auto-upload to connected channels" : "⚪ Auto-Pilot turned OFF: manual mode (no automatic uploads)", "ok");
+        const yt = (S.accounts || []).find(a => a.platform === "youtube");
+        const ytName = yt ? ` (@${yt.name})` : "";
+        toast(next ? `⚡ Auto-Pilot ON: clips will auto-upload to YouTube${ytName}` : "Auto-Pilot OFF: manual mode (no automatic uploads)", "ok");
         drawShell();
         drawAdd(S.view === "overview" ? "hero" : "compact");
       } catch (e) {

@@ -1,5 +1,7 @@
 import json
+import os
 import threading
+import time
 from pathlib import Path
 
 from . import config, ctx
@@ -35,7 +37,14 @@ def save_settings(data: dict) -> dict:
         _FILE.parent.mkdir(parents=True, exist_ok=True)
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(cur, indent=2), encoding="utf-8")
-        tmp.replace(_FILE)
+        for i in range(10):
+            try:
+                tmp.replace(_FILE)
+                break
+            except OSError:
+                if i == 9:
+                    raise
+                time.sleep(0.05)
         ctx.bump()
         return cur
 
