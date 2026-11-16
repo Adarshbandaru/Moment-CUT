@@ -300,7 +300,7 @@ def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=
     while t < duration:
         windows.append((t, min(duration, t + WINDOW_SEC)))
         t += WINDOW_SEC - OVERLAP_SEC
-    per_window = max(2, min(8, int(np.ceil(max_clips * 1.5 / len(windows))) + 1))
+    per_window = max(2, min(8, int(np.ceil((max_clips or 6) * 1.5 / len(windows))) + 1))
     for a, b in windows:
         chunk = [l for l in lines if a <= l["s"] < b]
         if len(chunk) < 3:
@@ -315,7 +315,7 @@ def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=
             log(f"AI window {a:.0f}-{b:.0f}s failed: {e}")
     note = ""
     if not used_model:
-        found = fallback_by_loudness(db, words, max_clips, max_len, duration)
+        found = fallback_by_loudness(db, words, max_clips or 6, max_len, duration)
         note = "The AI was unavailable, so clips were picked by loudness only."
     clips = []
     for c in sorted(found, key=lambda c: -_num(c.get("score"))):
@@ -325,7 +325,7 @@ def find_clips(words, db, duration, title="", uploader="", max_clips=6, min_len=
         if _overlaps(s, e, clips):
             continue  # overlaps a better clip
         clips.append(_tidy(c, s, e))
-        if len(clips) >= max_clips:
+        if max_clips and len(clips) >= max_clips:
             break
     clips.sort(key=lambda c: c["start"])
     return clips, {"model": used_model, "tokens": tokens, "note": note}

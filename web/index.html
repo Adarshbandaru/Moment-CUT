@@ -1279,8 +1279,11 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
                      : `<button class="btn primary" data-act="golive"><span class="rdot"></span>${liveOn(c).length ? "Record live stream" : "Start recording"}</button>`;
   }
   if (S.view === "overview" || S.view === "library") {
+    const ap = S.status?.autopilot || {enabled: true};
+    const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to switch between Auto-Pilot and Manual mode">${ap.enabled ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>`;
     const L = S.status.links || {};
-    act = (L.repo ? `<a class="btn" href="${esc(L.repo)}" target="_blank" rel="noopener" title="Star PeakCut on GitHub">${ic("github")}<span>Star<span class="long"> on GitHub</span></span></a>` : "")
+    act = apBtn
+        + (L.repo ? `<a class="btn" href="${esc(L.repo)}" target="_blank" rel="noopener" title="Star PeakCut on GitHub">${ic("github")}<span>Star<span class="long"> on GitHub</span></span></a>` : "")
         + (L.follow ? `<a class="btn primary" href="${esc(L.follow)}" target="_blank" rel="noopener" title="Follow the maker of PeakCut on Instagram">${ic("instagram")}Follow me</a>` : "");
   }
   const me = S.status.user;
@@ -1357,19 +1360,21 @@ function setTab(t) {
 function drawAdd(variant) {
   const c = creator();
   $("#add").innerHTML = `<form class="composer ${variant === "hero" ? "big" : "compact"}" id="addform">
-    <div class="composer-input">${ic("link")}<input id="url" placeholder="Paste a YouTube, Twitch or Kick video link" autocomplete="off" aria-label="Video link"></div>
+    <div class="composer-input">${ic("link")}<input id="url" placeholder="Paste a YouTube video, playlist, or @channel link (auto-fetches top videos)" autocomplete="off" aria-label="Video link"></div>
     <div class="att" id="att"><div><div class="att-in" id="attIn"></div></div></div>
     <div class="composer-bar">
       <button type="button" class="chip" data-act="pickfile">${ic("up")}Upload video</button>
       ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
       <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
+      <button type="button" class="chip" data-act="toggleautopilot" style="${(S.status?.autopilot?.enabled ?? true) ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to toggle between Auto-Pilot and Manual mode">${(S.status?.autopilot?.enabled ?? true) ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>
+      ${(S.accounts || []).some(a => a.platform === "youtube") ? `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to YouTube">${ic("check")}Auto-upload to YouTube: ON</span>` : ""}
       ${(S.accounts || []).some(a => a.platform === "rumble") ? `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to Rumble">${ic("check")}Auto-upload to Rumble: ON</span>` : ""}
       <span class="grow"></span><span class="hint">or drop a video file here</span>
       <button class="btn primary" id="goBtn">${ic("scissors")}Make clips</button>
     </div>
     <div class="composer-opts" inert><div class="og">
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
-        ${stepper("o_max", "How many", c?.max_clips ?? 6, 1, 20, 1, "")}
+        ${stepper("o_max", "How many (0 = all)", (S.status?.autopilot?.enabled ?? true) ? 0 : (c?.max_clips ?? 6), 0, 50, 1, "")}
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
@@ -1548,7 +1553,14 @@ function onLink(input) {
   clearTimeout(linkTimer);
   const A = att(), u = input.value.trim();
   if (!u) { A.note = null; return drawAtt(); }
-  if (isChannel(u)) { A.note = "That's a channel, not a video. To clip their live streams, add them as a creator and press Start recording."; return drawAtt(); }
+  if (isChannel(u)) {
+    if (/youtube\.com|youtu\.be/i.test(u)) {
+      A.note = null;
+      return takeLink(A, u, input);
+    }
+    A.note = "That's a channel, not a video. To clip their live streams, add them as a creator and press Start recording.";
+    return drawAtt();
+  }
   if (!looksLink(u)) { A.note = u.length > 10 ? "Paste a full YouTube, Twitch or Kick video link." : null; return drawAtt(); }
   A.note = null; drawAtt();
   if (fullLink(u)) return takeLink(A, u, input);
@@ -1627,7 +1639,7 @@ async function makeClips() {
   const A = att();
   if (A.busy) return;
   const typed = $("#url")?.value.trim();
-  if (typed && looksLink(typed) && !isChannel(typed)) { clearTimeout(linkTimer); takeLink(A, typed, $("#url")); }
+  if (typed && looksLink(typed)) { clearTimeout(linkTimer); takeLink(A, typed, $("#url")); }
   if (A.links.some(l => l.state === "wait")) {   // still looking a link up: start as soon as it is found
     A.queued = true; drawAtt();
     toast("Finding the video first. Clipping starts as soon as it's found.");
@@ -1643,7 +1655,16 @@ async function makeClips() {
   const who = targetCreator(), opts = jobOptions();
   for (const l of A.links.filter(x => x.state === "ok")) {
     l.sending = true; drawAtt();
-    try { await send("/api/jobs", {url: l.url, options: opts, creator: who}); l.state = "done"; started++; }
+    try {
+      const res = await send("/api/jobs", {url: l.url, options: opts, creator: who});
+      l.state = "done";
+      if (res && res.channel && res.count) {
+        started += res.count;
+        toast(`Channel detected: Auto-queued top ${res.count} videos for clipping!`, "ok");
+      } else {
+        started++;
+      }
+    }
     catch (e) { l.state = "bad"; l.msg = e.message; failed++; }
     l.sending = false; drawAtt();
   }
@@ -2407,6 +2428,20 @@ document.addEventListener("click", async e => {
     if (a === "settab") { e.preventDefault(); S.stab = d.k; remember("settings", d.k); return drawSettings(); }
     if (a === "updhow") return updateHow();
     if (a === "updlater") { try { localStorage.setItem("peakcut_update_seen", S.status.update?.latest || ""); } catch {} return drawShell(); }
+    if (a === "toggleautopilot") {
+      const cur = S.status?.autopilot?.enabled ?? true;
+      const next = !cur;
+      try {
+        await send("/api/autopilot", {enabled: next});
+        S.status = await api("/api/status");
+        toast(next ? "⚡ Auto-Pilot ON: will auto-clip and auto-post to connected accounts" : "✋ Switched to Manual Mode", "ok");
+        drawShell();
+        drawAdd(S.view === "overview" ? "hero" : "compact");
+      } catch (e) {
+        toast(e.message, "bad");
+      }
+      return;
+    }
     if (a === "storopen") { await send("/api/storage/open"); return; }
     if (a === "storchange") { S.storOpen = !S.storOpen; S.storNew = ""; return drawSettings(); }
     if (a === "storpick") {

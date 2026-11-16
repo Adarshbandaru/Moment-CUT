@@ -80,8 +80,36 @@ def enqueue(job, clip, account_ids, now=False) -> list:
 
 def on_clip_ready(job, clip):
     """Called once when a clip first finishes rendering."""
+    from . import autopilot
+    ap_on = autopilot.is_autopilot()
+
     cid = job.get("creator")
     c = creators.get(cid) if cid else None
+
+    all_accs = accounts.list_accounts()
+
+    if ap_on:
+        to_post = []
+        if c and c.get("accounts"):
+            to_post = list(c["accounts"])
+        else:
+            to_post = [a["id"] for a in all_accs if a.get("platform") in ("youtube", "rumble")]
+
+        from . import rumble
+        if rumble.is_ready():
+            for a in all_accs:
+                if a.get("platform") == "rumble" and a["id"] not in to_post:
+                    to_post.append(a["id"])
+
+        if to_post:
+            made = enqueue(job, clip, to_post, now=True)
+            if made:
+                p_names = ", ".join(set(p.get("platform", "app").capitalize() for p in made))
+                alerts.notify(f"Auto-pilot queued clip for {p_names}: {clip.get('title') or clip.get('hook')}", kind="post")
+                if c:
+                    creators.log(c["id"], f"Auto-pilot queued for {p_names}: {clip.get('title') or clip.get('hook')}")
+            return
+
     if not c:
         # If job was created without an explicit creator, check if any creator has autopost on
         active = [cr for cr in creators.all_creators() if cr.get("autopost") and cr.get("accounts")]
@@ -90,14 +118,6 @@ def on_clip_ready(job, clip):
             job["creator"] = c["id"]
             jobs.save(job)
     if not c:
-        # Check if Rumble or any account is connected for auto-posting
-        from . import rumble
-        if rumble.is_ready():
-            rumble_accs = [a["id"] for a in accounts.list_accounts() if a.get("platform") == "rumble"]
-            if rumble_accs:
-                made = enqueue(job, clip, [rumble_accs[0]])
-                if made:
-                    alerts.notify(f"Queued for Rumble: {clip.get('title') or clip.get('hook')}", kind="post")
         return
     if not c.get("autopost") or not c.get("accounts"):
         return

@@ -196,8 +196,20 @@ def preview(url: str) -> dict:
     if url in _PREVIEWS:
         return _PREVIEWS[url]
     i = info(url)
-    if i["kind"] != "video" or not i["title"]:
-        raise ValueError("That link is a channel or playlist, not a single video.")
+    if is_channel_url(url) or i.get("kind") != "video":
+        ch_name = i.get("uploader") or i.get("title") or "YouTube Channel"
+        out = {
+            "title": f"Channel: {ch_name}",
+            "uploader": "Top videos will be automatically fetched and clipped",
+            "duration": 0,
+            "is_live": False,
+            "thumb": "",
+            "is_channel": True,
+        }
+        _PREVIEWS[url] = out
+        return out
+    if not i["title"]:
+        raise ValueError("Couldn't open that video. Check the link is public and complete.")
     thumb = ""
     t = i.get("thumbnail") or ""
     if t.startswith("https://"):
@@ -328,3 +340,50 @@ def loudness_per_second(audio: np.ndarray) -> np.ndarray:
     x = audio[: n * 16000].reshape(n, 16000).astype(np.float32) / 32768.0
     rms = np.sqrt((x ** 2).mean(axis=1) + 1e-10)
     return (20 * np.log10(rms)).astype(np.float32)
+
+
+def is_channel_url(url: str) -> bool:
+    """Check if a URL points to a YouTube channel, playlist, or user page rather than a single video."""
+    u = (url or "").lower().strip()
+    if not ("youtube.com" in u or "youtu.be" in u):
+        return False
+    if "watch?v=" in u:
+        return False
+    return "/@" in u or "/channel/" in u or "/c/" in u or "/user/" in u or "/playlist?" in u or u.endswith("/videos") or u.endswith("/streams")
+
+
+def fetch_channel_top_videos(url: str, limit: int = 5) -> list:
+    """Fetch and rank the best top-performing videos from a YouTube channel or playlist."""
+    norm_url = url.strip()
+    if ("youtube.com/@" in norm_url or "/channel/" in norm_url or "/c/" in norm_url or "/user/" in norm_url) and not any(x in norm_url for x in ["/videos", "/streams", "/shorts", "/playlists", "watch?v="]):
+        norm_url = norm_url.rstrip("/") + "/videos"
+
+    opts = {
+        "extract_flat": True,
+        "quiet": True,
+        "no_warnings": True,
+        "playlistend": max(25, limit * 4),
+        "windowsfilenames": True,
+        "socket_timeout": 30,
+    }
+    import yt_dlp
+    with _youtube_guard(norm_url), yt_dlp.YoutubeDL(opts) as ydl:
+        res = ydl.extract_info(norm_url, download=False)
+        entries = res.get("entries") or []
+        vids = []
+        for e in entries:
+            vid_url = e.get("url") or e.get("webpage_url")
+            eid = e.get("id")
+            if not vid_url and eid:
+                vid_url = f"https://www.youtube.com/watch?v={eid}"
+            if vid_url and ("watch?v=" in vid_url or "youtu.be/" in vid_url):
+                vids.append({
+                    "title": e.get("title") or "Video",
+                    "url": vid_url,
+                    "views": int(e.get("view_count") or 0),
+                    "duration": float(e.get("duration") or 0),
+                })
+        # Sort by view count descending to pick the best/top videos
+        vids.sort(key=lambda x: x["views"], reverse=True)
+        return vids[:limit]
+

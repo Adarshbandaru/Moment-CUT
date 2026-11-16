@@ -570,9 +570,10 @@ def google_callback(request: Request, code: str = "", state: str = "", error: st
 def status(request: Request):
     from . import notices
     from . import updates
+    from . import autopilot
     me_ = _me(request)
     return {"user": auth.public(me_), "update": updates.latest() if me_.is_admin else None, "accounts": config.ACCOUNTS, "disk_full": load.disk_full(), "no_ffmpeg": bool(_tools.missing()), "links": {"repo": config.REPO_URL, "follow": config.FOLLOW_URL}, "ai": usage.brief(), "unread": notices.unread(),
-            "tour": not accounts.settings()["tour_done"],
+            "tour": not accounts.settings()["tour_done"], "autopilot": autopilot.get_settings(),
             "youtube": accounts.youtube_ready(), "connect": {p: accounts.can_connect(p) for p in accounts.PLATFORM_NAMES}, "max_upload_mb": config.MAX_UPLOAD_MB, "upload_part_mb": config.UPLOAD_PART_MB, "max_batch": config.MAX_ACTIVE_JOBS_PER_USER,
             "styles": {k: v["label"] for k, v in render.STYLES.items()}, "layouts": render.LAYOUTS}
 
@@ -718,10 +719,50 @@ def create_from_link(body: dict = Body(...)):
     creator = str(body.get("creator") or "") or None
     if creator and not creators.get(creator):
         raise HTTPException(404, "No such creator")
+
+    from . import autopilot
+    ap_cfg = autopilot.get_settings()
+
+    # If this is a YouTube channel or playlist link, fetch its best top videos and queue them all
+    if media.is_channel_url(url):
+        limit = int(ap_cfg.get("channel_top_count", 5))
+        try:
+            top_vids = media.fetch_channel_top_videos(url, limit=limit)
+        except Exception as e:
+            raise HTTPException(400, f"Could not inspect channel: {e}")
+        if not top_vids:
+            raise HTTPException(404, "Could not find any videos on this channel.")
+        created = []
+        with _create_lock:
+            for vid in top_vids:
+                try:
+                    _job_slots()
+                    opts = dict(body.get("options") or {})
+                    if ap_cfg.get("dynamic_clips") and "max_clips" not in (body.get("options") or {}):
+                        opts["max_clips"] = 0
+                    j = jobs.create({"type": "url", "url": vid["url"], "name": vid["title"]}, opts, creator=creator)
+                    j.update(title=vid["title"], duration=vid.get("duration", 0))
+                    jobs.save(j)
+                    created.append(j)
+                except Exception:
+                    pass
+        if not created:
+            raise HTTPException(429, "Too many videos in progress. Please wait for one to finish.")
+        return {
+            "channel": True,
+            "count": len(created),
+            "jobs": [jobs.public(j) for j in created],
+            **jobs.public(created[0])
+        }
+
+    opts = dict(body.get("options") or {})
+    if ap_cfg.get("dynamic_clips") and "max_clips" not in (body.get("options") or {}):
+        opts["max_clips"] = 0
+
     try:
         with _create_lock:
             _job_slots()
-            job = jobs.create({"type": "url", "url": url, "name": url}, body.get("options") or {}, creator=creator)
+            job = jobs.create({"type": "url", "url": url, "name": url}, opts, creator=creator)
     except (ValueError, TypeError) as e:
         raise HTTPException(400, str(e) if isinstance(e, ValueError) else "Those options aren't valid.")
     seen = media._PREVIEWS.get(url)  # already looked up while the user was typing: show it straight away
@@ -1416,6 +1457,20 @@ def rumble_cookie(body: dict):
 def rumble_status():
     from . import rumble
     return rumble.session_info()
+
+
+@app.get("/api/autopilot")
+def autopilot_get():
+    from . import autopilot
+    return autopilot.get_settings()
+
+
+@app.post("/api/autopilot")
+def autopilot_post(body: dict = Body(...)):
+    _need_verified()
+    from . import autopilot
+    return autopilot.save_settings(body)
+
 
 
 @app.get("/oauth/{platform}/callback")
