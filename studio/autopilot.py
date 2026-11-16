@@ -8,7 +8,7 @@ _lock = threading.Lock()
 _FILE = config.DATA_DIR / "autopilot.json"
 
 DEFAULTS = {
-    "enabled": True,
+    "enabled": False,
     "auto_upload_youtube": True,
     "auto_upload_rumble": True,
     "dynamic_clips": True,        # "clip as many as are perfect"
@@ -41,4 +41,4 @@ def save_settings(data: dict) -> dict:
 
 
 def is_autopilot() -> bool:
-    return bool(get_settings().get("enabled", True))
+    return bool(get_settings().get("enabled", False))

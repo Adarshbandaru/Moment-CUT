@@ -1296,8 +1296,8 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
     uploadBadge = `<span class="chip" style="color:var(--c-ok);border:1px solid var(--c-ok);font-weight:600" title="All clips processed">${ic("check")}100% Uploaded</span>`;
   }
 
-  const ap = S.status?.autopilot || {enabled: true};
-  const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to switch between Auto-Pilot and Manual mode">${ap.enabled ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>`;
+  const ap = S.status?.autopilot || {enabled: false};
+  const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand);color:#fff;font-weight:600" : "background:var(--muted);color:var(--dim);border:1px dashed var(--dim)"}" title="Click to toggle Auto-Pilot ON or OFF">${ap.enabled ? "⚡ Auto-Pilot: ON" : "⚪ Auto-Pilot: OFF"}</button>`;
 
   let pic = "", subHtml = null, tabs = "";
   if (c) {
@@ -1420,15 +1420,23 @@ function drawAdd(variant) {
       <button type="button" class="chip" data-act="pickfile">${ic("up")}Upload video</button>
       ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
       <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
-      <button type="button" class="chip" data-act="toggleautopilot" style="${(S.status?.autopilot?.enabled ?? true) ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to toggle between Auto-Pilot and Manual mode">${(S.status?.autopilot?.enabled ?? true) ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>
-      ${(S.accounts || []).some(a => a.platform === "youtube") ? `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to YouTube">${ic("check")}Auto-upload to YouTube: ON</span>` : ""}
-      ${(S.accounts || []).some(a => a.platform === "rumble") ? `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to Rumble">${ic("check")}Auto-upload to Rumble: ON</span>` : ""}
+      ${(() => {
+        const apOn = S.status?.autopilot?.enabled ?? false;
+        let h = `<button type="button" class="chip ${apOn ? "on" : ""}" data-act="toggleautopilot" style="${apOn ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand);font-weight:600" : "color:var(--dim);border:1px dashed var(--dim)"}" title="Click to toggle Auto-Pilot ON or OFF">${apOn ? "⚡ Auto-Pilot: ON" : "⚪ Auto-Pilot: OFF"}</button>`;
+        if (apOn) {
+          if ((S.accounts || []).some(a => a.platform === "youtube"))
+            h += `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to YouTube">${ic("check")}Auto-upload: YouTube</span>`;
+          if ((S.accounts || []).some(a => a.platform === "rumble"))
+            h += `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to Rumble">${ic("check")}Auto-upload: Rumble</span>`;
+        }
+        return h;
+      })()}
       <span class="grow"></span><span class="hint">or drop a video file here</span>
       <button class="btn primary" id="goBtn">${ic("scissors")}Make clips</button>
     </div>
     <div class="composer-opts" inert><div class="og">
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
-        ${stepper("o_max", "How many (0 = all)", (S.status?.autopilot?.enabled ?? true) ? 0 : (c?.max_clips ?? 6), 0, 50, 1, "")}
+        ${stepper("o_max", "How many (0 = all)", (S.status?.autopilot?.enabled ?? false) ? 0 : (c?.max_clips ?? 6), 0, 50, 1, "")}
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
@@ -2483,12 +2491,12 @@ document.addEventListener("click", async e => {
     if (a === "updhow") return updateHow();
     if (a === "updlater") { try { localStorage.setItem("peakcut_update_seen", S.status.update?.latest || ""); } catch {} return drawShell(); }
     if (a === "toggleautopilot") {
-      const cur = S.status?.autopilot?.enabled ?? true;
+      const cur = S.status?.autopilot?.enabled ?? false;
       const next = !cur;
       try {
         await send("/api/autopilot", {enabled: next});
         S.status = await api("/api/status");
-        toast(next ? "⚡ Auto-Pilot ON: will auto-clip and auto-post to connected accounts" : "✋ Switched to Manual Mode", "ok");
+        toast(next ? "⚡ Auto-Pilot turned ON: clips will auto-upload to connected channels" : "⚪ Auto-Pilot turned OFF: manual mode (no automatic uploads)", "ok");
         drawShell();
         drawAdd(S.view === "overview" ? "hero" : "compact");
       } catch (e) {
