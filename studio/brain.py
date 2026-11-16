@@ -20,9 +20,10 @@ SCHEMA = {
             "end": {"type": "NUMBER"},
             "score": {"type": "INTEGER"},
             "category": {"type": "STRING"},
-            "hook": {"type": "STRING"},
+            "hook": {"type": "STRING", "description": "2 to 4 words ONLY, ALL CAPS, punchy thumbnail text like JETER’S TAKE or ENDLESS ORDER, never repeating title"},
             "title": {"type": "STRING"},
             "description": {"type": "STRING"},
+            "pinned_comment": {"type": "STRING", "description": "Engaging comment to pin at top, e.g. Who else loved this moment? 👇"},
             "hashtags": {"type": "ARRAY", "items": {"type": "STRING"}},
             "highlight_words": {"type": "ARRAY", "items": {"type": "STRING"}},
             "reason": {"type": "STRING"},
@@ -52,14 +53,16 @@ Most checks should return []. Only return a moment you would stop scrolling for.
 RULES = """
 Rules:
 - Each clip is {min_len} to {max_len} seconds. Use the [seconds] values for start and end.
+- First 3 seconds hook: Start with the highest-energy moment (the scream, the laugh, the shock face, or the punchline) to hook viewers before the algorithm counts the view.
 - Start on the setup line, not mid-sentence. End right after the payoff or reaction, on the last word of a
   complete sentence: never in the middle of a sentence or a thought. The clip must make sense on its own.
 - Do not pick intros, sponsor reads, "like and subscribe", or dead air.
 - Skip weak moments. Fewer strong clips beat many weak ones. Return [] if nothing is worth clipping.
 - score: 0-100, how likely a stranger keeps watching. Be honest; most clips are 50-80.
-- hook: at most 5 words, ALL CAPS, shown as big text on the video. Curiosity, but true to what happens.
+- hook: 2 to 4 words ONLY, ALL CAPS, short bold thumbnail/cover text (e.g. 'JETER’S TAKE', 'ENDLESS ORDER', 'NO WAY HE DID'). NEVER repeat the video title. High curiosity.
 - title: at most 70 characters, for the post.
 - description: one or two sentences.
+- pinned_comment: an engaging question to pin at the top of comments to drive viewer engagement (e.g. 'Who else loved this moment? 👇' or 'Did he go too far? 👇').
 - hashtags: 5 tags without the # sign.
 - highlight_words: 3 to 6 single words spoken in the clip that carry the punch.
 - Write hook, title, description, hashtags and highlight_words in English. If the video is in Hindi or Urdu,
@@ -118,6 +121,7 @@ def _tidy(c, s, e):
         "category": cat if cat in CATEGORIES else "other",
         "hook": roman.to_roman(_text(c.get("hook"), 60)).upper(), "title": roman.to_roman(_text(c.get("title"), 100)),
         "description": roman.to_roman(_text(c.get("description"), 300)),
+        "pinned_comment": _text(c.get("pinned_comment") or "Who else loved this moment? 👇", 160),
         "hashtags": [t for t in tags if t][:8],
         "highlight_words": [roman.to_roman(_text(h, 30)) for h in words][:8],
         "reason": _text(c.get("reason"), 200),

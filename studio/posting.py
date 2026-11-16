@@ -171,7 +171,9 @@ def _caption(clip, creator):
         base_tags.append("IShowSpeedVerse_IN")
     tags = " ".join("#" + h for h in base_tags)
     footer = creator.get("post_footer", "") or "Content by @IShowSpeedVerse_IN | #IShowSpeedVerse_IN"
-    return "\n\n".join(x for x in (clip.get("description", ""), tags, footer) if x)
+    pinned = clip.get("pinned_comment") or "Who else loved this moment? 👇"
+    comment_cta = f"💬 {pinned}"
+    return "\n\n".join(x for x in (clip.get("description", ""), comment_cta, tags, footer) if x)
 
 
 def _post(p):

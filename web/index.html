@@ -2058,47 +2058,51 @@ function nextSteps(o) {
 }
 function drawOverview() {
   const box = $("#ov"); if (!box) return;
-  const o = S.overview || {
-    recording: (S.creators || []).filter(c => c.live_job).length,
-    creators: (S.creators || []).map(c => ({
-      id: c.id, name: c.name, channels: Object.values(c.channels || {}),
-      clips_today: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
-      clips_total: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
-      posted_today: 0, posted_total: 0, queued: 0, failed: 0, views: 0, earnings: 0, state: c.live_job ? "recording" : "idle"
-    })),
-    daily: [],
-    posts: []
-  };
-  const sum = k => (o.creators || []).reduce((a, r) => a + (r[k] || 0), 0);
-  const d14 = k => (o.daily || []).reduce((a, d) => a + (d[k] || 0), 0);
-  const state = r => r.state === "recording" ? `<span class="pill live"><span class="dot"></span>Recording</span>` : r.state === "waiting" ? `<span class="pill warn">Waiting for live</span>` : `<span class="pill">Idle</span>`;
-  const pst = p => p.status === "posted" ? `<span class="pill ok">Posted</span>` : p.status === "failed" ? `<span class="pill bad">Failed</span>` : p.status === "posting" ? `<span class="pill warn">Posting now</span>` : `<span class="pill warn">${clock(p.due_at)}</span>`;
-  const steps = nextSteps(o);
-  put(box, `<div class="tiles">
-      <div class="tile"><i>${ic("radio")}</i><b>${o.recording}</b><span>Recording now</span></div>
-      <div class="tile"><i>${ic("scissors")}</i><b>${sum("clips_today")}</b><span>Clips today</span></div>
-      <div class="tile"><i>${ic("send")}</i><b>${sum("posted_today")}</b><span>Posted today</span></div>
-      <div class="tile"><i>${ic(sum("failed") ? "warn" : "clock")}</i><b>${sum("queued")}</b><span>Waiting to post${sum("failed") ? ` · <span style="color:var(--bad)">${sum("failed")} failed</span>` : ""}</span></div></div>
-    <div class="home-grid">
-      <div class="card"><div class="card-head"><div><h2>Activity</h2><p class="sub">Last 14 days</p></div>
-          <div class="kpis"><div class="kpi"><b>${d14("clips")}</b><span>Clips made</span></div><div class="kpi"><b>${d14("posted")}</b><span>Posted</span></div>
-            <div class="kpi"><b>${sum("views").toLocaleString()}</b><span>Views</span></div><div class="kpi"><b>$${sum("earnings").toFixed(2)}</b><span>Est. earnings</span></div></div></div>
-        <div class="legend"><span><i style="background:var(--brand)"></i>Clips made</span><span><i style="background:var(--brand-ink)"></i>Posted</span></div>
-        ${barChart(o.daily || [])}</div>
-      ${aiCard()}
-    </div>
-    ${steps.length ? `<div class="card"><div class="card-head"><div><h2>Next steps</h2><p class="sub">Finish setting up Moment-CUT</p></div></div>
-      <div class="steps across">${steps.map((x, i) => `<button class="step" data-act="step" data-to="${esc(x[2])}"><span class="n">${i + 1}</span><span><b>${esc(x[0])}</b><span class="d">${esc(x[1])}</span></span>${ic("arrowr")}</button>`).join("")}</div></div>` : ""}
-    <div class="card"><div class="card-head"><div><h2>Creators</h2><p class="sub">Each creator's status and results</p></div></div>
-      ${o.creators.length ? `<div class="scroll"><table><tr><th>Creator</th><th>Status</th><th>Auto-post</th><th class="num">Clips today</th><th class="num">Posted today</th><th class="num">Waiting</th><th class="num">Failed</th><th class="num">Views</th><th class="num">Est. $</th></tr>
-      ${o.creators.map(r => `<tr><td><a class="lnk" href="#" data-act="go" data-v="c:${esc(r.id)}">${esc(r.name)}</a></td><td>${state(r)}</td><td>${r.autopost ? `<span class="pill ok">On</span>` : `<span class="pill">Off</span>`}</td><td class="num">${r.clips_today} <span class="sub">/ ${r.clips_total}</span></td><td class="num">${r.posted_today} <span class="sub">/ ${r.posted_total}</span></td><td class="num">${r.queued}</td><td class="num">${r.failed}</td><td class="num">${r.views.toLocaleString()}</td><td class="num">${r.earnings.toFixed(2)}</td></tr>`).join("")}</table></div>`
-      : `<div class="empty"><img src="/brand/favicon.svg" alt=""><b>No creators yet</b>Add one to give each streamer their own workspace.</div>`}</div>
-    <div class="card"><div class="card-head"><div><h2>Post queue</h2><p class="sub">${o.paused ? "Paused. Recording and clipping carry on; nothing is posted." : "Queued clips go out at their scheduled time."}</p></div>
-        <button class="btn ${o.paused ? "primary" : ""}" data-act="pause">${ic(o.paused ? "play" : "pause")}${o.paused ? "Resume posting" : "Pause all posting"}</button></div>
-      ${o.posts.length ? `<div class="scroll"><table class="stack"><tr><th>When</th><th>Clip</th><th>Creator</th><th>Account</th><th class="num">Views</th><th></th></tr>
-      ${o.posts.map(p => `<tr><td data-l="Status">${pst(p)}</td><td data-l="Clip" class="c-main">${p.url ? `<a class="lnk" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}${p.error ? `<div class="err" style="margin:2px 0 0">${esc(p.error)}</div>` : ""}</td><td data-l="Creator">${esc(p.creator_name || "None")}</td><td data-l="Account">${esc(p.account_name)}</td><td data-l="Views" class="num">${p.views ?? "–"}</td>
-        <td class="c-act" style="text-align:right">${p.status === "scheduled" ? `<button class="btn sm" data-act="pcancel" data-id="${p.id}">Cancel</button>` : p.status === "failed" ? `<button class="btn sm" data-act="pretry" data-id="${p.id}">Retry</button>` : ""}</td></tr>`).join("")}</table></div>`
-      : `<p class="help">Nothing queued or posted yet.</p>`}</div>`);
+  try {
+    const o = S.overview || {
+      recording: (S.creators || []).filter(c => c.live_job).length,
+      creators: (S.creators || []).map(c => ({
+        id: c.id, name: c.name, channels: Object.values(c.channels || {}),
+        clips_today: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
+        clips_total: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
+        posted_today: 0, posted_total: 0, queued: 0, failed: 0, views: 0, earnings: 0, state: c.live_job ? "recording" : "idle"
+      })),
+      daily: [],
+      posts: []
+    };
+    const sum = k => (o.creators || []).reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const d14 = k => (o.daily || []).reduce((a, d) => a + (Number(d[k]) || 0), 0);
+    const state = r => r.state === "recording" ? `<span class="pill live"><span class="dot"></span>Recording</span>` : r.state === "waiting" ? `<span class="pill warn">Waiting for live</span>` : `<span class="pill">Idle</span>`;
+    const pst = p => p.status === "posted" ? `<span class="pill ok">Posted</span>` : p.status === "failed" ? `<span class="pill bad">Failed</span>` : p.status === "posting" ? `<span class="pill warn">Posting now</span>` : `<span class="pill warn">${p.due_at ? clock(p.due_at) : "Soon"}</span>`;
+    const steps = nextSteps(o);
+    put(box, `<div class="tiles">
+        <div class="tile"><i>${ic("radio")}</i><b>${o.recording || 0}</b><span>Recording now</span></div>
+        <div class="tile"><i>${ic("scissors")}</i><b>${sum("clips_today")}</b><span>Clips today</span></div>
+        <div class="tile"><i>${ic("send")}</i><b>${sum("posted_today")}</b><span>Posted today</span></div>
+        <div class="tile"><i>${ic(sum("failed") ? "warn" : "clock")}</i><b>${sum("queued")}</b><span>Waiting to post${sum("failed") ? ` · <span style="color:var(--bad)">${sum("failed")} failed</span>` : ""}</span></div></div>
+      <div class="home-grid">
+        <div class="card"><div class="card-head"><div><h2>Activity</h2><p class="sub">Last 14 days</p></div>
+            <div class="kpis"><div class="kpi"><b>${d14("clips")}</b><span>Clips made</span></div><div class="kpi"><b>${d14("posted")}</b><span>Posted</span></div>
+              <div class="kpi"><b>${Number(sum("views") || 0).toLocaleString()}</b><span>Views</span></div><div class="kpi"><b>$${Number(sum("earnings") || 0).toFixed(2)}</b><span>Est. earnings</span></div></div></div>
+          <div class="legend"><span><i style="background:var(--brand)"></i>Clips made</span><span><i style="background:var(--brand-ink)"></i>Posted</span></div>
+          ${barChart(o.daily || [])}</div>
+        ${aiCard()}
+      </div>
+      ${steps.length ? `<div class="card"><div class="card-head"><div><h2>Next steps</h2><p class="sub">Finish setting up Moment-CUT</p></div></div>
+        <div class="steps across">${steps.map((x, i) => `<button class="step" data-act="step" data-to="${esc(x[2])}"><span class="n">${i + 1}</span><span><b>${esc(x[0])}</b><span class="d">${esc(x[1])}</span></span>${ic("arrowr")}</button>`).join("")}</div></div>` : ""}
+      <div class="card"><div class="card-head"><div><h2>Creators</h2><p class="sub">Each creator's status and results</p></div></div>
+        ${o.creators.length ? `<div class="scroll"><table><tr><th>Creator</th><th>Status</th><th>Auto-post</th><th class="num">Clips today</th><th class="num">Posted today</th><th class="num">Waiting</th><th class="num">Failed</th><th class="num">Views</th><th class="num">Est. $</th></tr>
+        ${o.creators.map(r => `<tr><td><a class="lnk" href="#" data-act="go" data-v="c:${esc(r.id)}">${esc(r.name)}</a></td><td>${state(r)}</td><td>${r.autopost ? `<span class="pill ok">On</span>` : `<span class="pill">Off</span>`}</td><td class="num">${r.clips_today || 0} <span class="sub">/ ${r.clips_total || 0}</span></td><td class="num">${r.posted_today || 0} <span class="sub">/ ${r.posted_total || 0}</span></td><td class="num">${r.queued || 0}</td><td class="num">${r.failed || 0}</td><td class="num">${Number(r.views || 0).toLocaleString()}</td><td class="num">${Number(r.earnings || 0).toFixed(2)}</td></tr>`).join("")}</table></div>`
+        : `<div class="empty"><img src="/brand/favicon.svg" alt=""><b>No creators yet</b>Add one to give each streamer their own workspace.</div>`}</div>
+      <div class="card"><div class="card-head"><div><h2>Post queue</h2><p class="sub">${o.paused ? "Paused. Recording and clipping carry on; nothing is posted." : "Queued clips go out at their scheduled time."}</p></div>
+          <button class="btn ${o.paused ? "primary" : ""}" data-act="pause">${ic(o.paused ? "play" : "pause")}${o.paused ? "Resume posting" : "Pause all posting"}</button></div>
+        ${o.posts.length ? `<div class="scroll"><table class="stack"><tr><th>When</th><th>Clip</th><th>Creator</th><th>Account</th><th class="num">Views</th><th></th></tr>
+        ${o.posts.map(p => `<tr><td data-l="Status">${pst(p)}</td><td data-l="Clip" class="c-main">${p.url ? `<a class="lnk" href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}${p.error ? `<div class="err" style="margin:2px 0 0">${esc(p.error)}</div>` : ""}</td><td data-l="Creator">${esc(p.creator_name || "None")}</td><td data-l="Account">${esc(p.account_name)}</td><td data-l="Views" class="num">${p.views ?? "–"}</td>
+          <td class="c-act" style="text-align:right">${p.status === "scheduled" ? `<button class="btn sm" data-act="pcancel" data-id="${p.id}">Cancel</button>` : p.status === "failed" ? `<button class="btn sm" data-act="pretry" data-id="${p.id}">Retry</button>` : ""}</td></tr>`).join("")}</table></div>`
+        : `<p class="help">Nothing queued or posted yet.</p>`}</div>`);
+  } catch (e) {
+    console.error("drawOverview error:", e);
+  }
 }
 
 /* ============================================================ AI usage */
