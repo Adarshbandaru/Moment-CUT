@@ -21,6 +21,8 @@ CLAUDE.local.md
 .vscode/
 .idea/
 *.bat
+!Moment.bat
+!connect_rumble.bat
 Thumbs.db
 .DS_Store
 
