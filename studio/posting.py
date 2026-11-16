@@ -20,13 +20,33 @@ def _mine() -> list:
     u = ctx.uid()
     return [p for p in _posts if p.get("user") == u]
 OPEN = ("scheduled", "posting")
+_upload_lock = threading.Lock()
+_wake_event = threading.Event()
+
+
+def _wake_uploader():
+    _wake_event.set()
 
 
 def _save():
     with _lock:
         tmp = _FILE.with_suffix(".tmp")
         tmp.write_text(json.dumps(_posts, indent=1), encoding="utf-8")
-        tmp.replace(_FILE)
+        for i in range(10):
+            try:
+                tmp.replace(_FILE)
+                break
+            except OSError:
+                if i == 9:
+                    try:
+                        _FILE.write_text(json.dumps(_posts, indent=1), encoding="utf-8")
+                        try:
+                            tmp.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    except OSError:
+                        pass
+                time.sleep(0.05)
 
 
 def _day(t):
@@ -63,7 +83,7 @@ def enqueue(job, clip, account_ids, now=False) -> list:
             if not acc:
                 continue
             if any(p["job"] == job["id"] and p["clip"] == clip["id"] and p["account"] == aid
-                   and p["status"] in OPEN + ("posted",) for p in _mine()):
+                   and p["status"] in OPEN + ("posted",) for p in _posts):
                 continue  # never post the same clip to the same account twice
             due = time.time() if now else _next_slot(aid, c.get("post_gap_min", 1), c.get("daily_cap", 50))
             p = {"id": secrets.token_hex(8), "user": ctx.uid(), "job": job["id"], "clip": clip["id"], "creator": job.get("creator"),
@@ -76,7 +96,7 @@ def enqueue(job, clip, account_ids, now=False) -> list:
     for p in made:
         _mirror(p)
     if now and made:
-        threading.Thread(target=_process_now, args=(ctx.uid(), [p["id"] for p in made]), daemon=True).start()
+        _wake_uploader()
     return made
 
 
@@ -163,6 +183,21 @@ def _post(p):
             raise RuntimeError("The clip no longer exists or is not finished.")
         if not acc:
             raise RuntimeError("That account was disconnected.")
+
+        # Anti-repetition: Ensure this clip was not already posted to this account
+        already = [
+            x for x in _posts
+            if x.get("id") != p["id"]
+            and x.get("account") == p["account"]
+            and x.get("status") == "posted"
+            and x.get("remote_id")
+        ]
+        if any(x.get("job") == p["job"] and x.get("clip") == p["clip"] for x in already):
+            p.update(status="cancelled", error="Duplicate: this clip was already posted.")
+            _save()
+            _mirror(p)
+            return
+
         path = Path(job["dir"]) / "clips" / clip["file"]
         creator = creators.get(job["creator"]) or dict(creators.DEFAULTS, name="clips")
         title, cap = clip.get("title") or clip.get("hook") or "Clip", _caption(clip, creator)
@@ -195,22 +230,65 @@ def _post(p):
 
 
 def _run():
+    """Sequential upload worker: uploads videos one by one until all queued posts finish."""
     while True:
-        time.sleep(15)
-        due = [p for p in list(_posts) if p["status"] == "scheduled" and p["due_at"] <= time.time() and p.get("user")]
-        for p in due:
-            try:
-                with ctx.as_user(p["user"]):
-                    from . import autopilot
-                    if not autopilot.is_autopilot() and accounts.settings()["paused"]:
+        # Check every 5s or wake up instantly when a clip is ready
+        _wake_event.wait(timeout=5)
+        _wake_event.clear()
+
+        while True:
+            from . import autopilot
+            ap_on = autopilot.is_autopilot()
+
+            next_p = None
+            with _lock:
+                candidates = []
+                for p in _posts:
+                    if p.get("status") != "scheduled" or not p.get("user"):
                         continue
+                    if ap_on or p.get("due_at", 0) <= time.time():
+                        candidates.append(p)
+
+                if not candidates:
+                    break
+
+                # Sort by due_at or created time so oldest / first created uploads first
+                candidates.sort(key=lambda p: (p.get("due_at") or 0, p.get("created") or 0))
+                p = candidates[0]
+
+                if not ap_on:
+                    try:
+                        with ctx.as_user(p["user"]):
+                            if accounts.settings().get("paused"):
+                                break
+                    except Exception:
+                        pass
+
+                p["status"] = "posting"
+                _save()
+                next_p = p
+
+            if not next_p:
+                break
+
+            with ctx.as_user(next_p["user"]):
+                _mirror(next_p)
+
+            # Upload ONE video exclusively with _upload_lock so uploads NEVER overlap
+            with _upload_lock:
+                try:
+                    with ctx.as_user(next_p["user"]):
+                        _post(next_p)
+                except Exception as e:
                     with _lock:
-                        if p["status"] != "scheduled":
-                            continue
-                        p["status"] = "posting"
-                    _post(p)
-            except Exception:  # noqa: BLE001
-                pass
+                        next_p["status"] = "failed"
+                        next_p["error"] = str(e)[:300]
+                        _save()
+                    with ctx.as_user(next_p["user"]):
+                        _mirror(next_p)
+
+            # 2s breather between uploads so YouTube / platforms process each video cleanly
+            time.sleep(2)
 
 
 def _stats_for(recent):
@@ -259,6 +337,7 @@ def retry(pid):
         p.update(status="scheduled", due_at=time.time(), tries=0, error=None)
         _save()
     _mirror(p)
+    _wake_uploader()
 
 
 def overview() -> dict:

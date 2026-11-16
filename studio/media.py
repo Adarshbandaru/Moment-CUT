@@ -352,17 +352,26 @@ def is_channel_url(url: str) -> bool:
     return "/@" in u or "/channel/" in u or "/c/" in u or "/user/" in u or "/playlist?" in u or u.endswith("/videos") or u.endswith("/streams")
 
 
-def fetch_channel_top_videos(url: str, limit: int = 5) -> list:
-    """Fetch and rank the best top-performing videos from a YouTube channel or playlist."""
+def extract_youtube_id(url: str) -> str | None:
+    """Extract canonical 11-character YouTube video ID from any format of YouTube URL."""
+    if not url:
+        return None
+    m = re.search(r"(?:v=|\/v\/|\/embed\/|\/shorts\/|youtu\.be\/|\/videos\/|\/live\/)([a-zA-Z0-9_-]{11})", str(url))
+    return m.group(1) if m else None
+
+
+def fetch_channel_top_videos(url: str, limit: int = 5, exclude_ids: set | list = None) -> list:
+    """Fetch and rank the best top-performing videos from a YouTube channel or playlist, excluding already-processed videos."""
     norm_url = url.strip()
     if ("youtube.com/@" in norm_url or "/channel/" in norm_url or "/c/" in norm_url or "/user/" in norm_url) and not any(x in norm_url for x in ["/videos", "/streams", "/shorts", "/playlists", "watch?v="]):
         norm_url = norm_url.rstrip("/") + "/videos"
 
+    exclude_set = set(exclude_ids or [])
     opts = {
         "extract_flat": True,
         "quiet": True,
         "no_warnings": True,
-        "playlistend": max(25, limit * 4),
+        "playlistend": max(50, limit * 6),
         "windowsfilenames": True,
         "socket_timeout": 30,
     }
@@ -373,11 +382,15 @@ def fetch_channel_top_videos(url: str, limit: int = 5) -> list:
         vids = []
         for e in entries:
             vid_url = e.get("url") or e.get("webpage_url")
-            eid = e.get("id")
+            eid = e.get("id") or extract_youtube_id(vid_url)
             if not vid_url and eid:
                 vid_url = f"https://www.youtube.com/watch?v={eid}"
+            # Skip if already processed or completed
+            if eid and eid in exclude_set:
+                continue
             if vid_url and ("watch?v=" in vid_url or "youtu.be/" in vid_url):
                 vids.append({
+                    "id": eid,
                     "title": e.get("title") or "Video",
                     "url": vid_url,
                     "views": int(e.get("view_count") or 0),

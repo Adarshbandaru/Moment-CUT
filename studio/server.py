@@ -726,15 +726,31 @@ def create_from_link(body: dict = Body(...)):
     # If this is a YouTube channel or playlist link, fetch its best top videos and queue them all
     if media.is_channel_url(url):
         limit = int(ap_cfg.get("channel_top_count", 5))
+
+        # Anti-repetition: Find all YouTube video IDs already processed or currently clipping
+        existing_jobs = jobs.list_jobs()
+        processed_yt_ids = set()
+        for j in existing_jobs:
+            if j.get("status") in ("done", "running", "queued"):
+                src_url = (j.get("source") or {}).get("url") or j.get("url") or ""
+                yid = media.extract_youtube_id(src_url)
+                if yid:
+                    processed_yt_ids.add(yid)
+
         try:
-            top_vids = media.fetch_channel_top_videos(url, limit=limit)
+            top_vids = media.fetch_channel_top_videos(url, limit=limit, exclude_ids=processed_yt_ids)
         except Exception as e:
             raise HTTPException(400, f"Could not inspect channel: {e}")
         if not top_vids:
+            if processed_yt_ids:
+                raise HTTPException(400, "All top videos from this channel have already been clipped! None were repeated.")
             raise HTTPException(404, "Could not find any videos on this channel.")
         created = []
         with _create_lock:
             for vid in top_vids:
+                vid_yid = media.extract_youtube_id(vid["url"])
+                if vid_yid and vid_yid in processed_yt_ids:
+                    continue
                 try:
                     _job_slots()
                     opts = dict(body.get("options") or {})
@@ -744,6 +760,8 @@ def create_from_link(body: dict = Body(...)):
                     j.update(title=vid["title"], duration=vid.get("duration", 0))
                     jobs.save(j)
                     created.append(j)
+                    if vid_yid:
+                        processed_yt_ids.add(vid_yid)
                 except Exception:
                     pass
         if not created:
@@ -754,6 +772,18 @@ def create_from_link(body: dict = Body(...)):
             "jobs": [jobs.public(j) for j in created],
             **jobs.public(created[0])
         }
+
+    # For direct links: if this video is already being processed or finished, reuse existing job
+    single_yid = media.extract_youtube_id(url)
+    if single_yid:
+        existing_jobs = jobs.list_jobs()
+        already = [
+            j for j in existing_jobs
+            if j.get("status") in ("done", "running", "queued")
+            and media.extract_youtube_id((j.get("source") or {}).get("url") or j.get("url") or "") == single_yid
+        ]
+        if already:
+            return jobs.public(already[0])
 
     opts = dict(body.get("options") or {})
     if ap_cfg.get("dynamic_clips") and "max_clips" not in (body.get("options") or {}):
