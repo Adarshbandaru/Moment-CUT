@@ -2171,14 +2171,22 @@ const setTabs = () => [
   ...(S.status.user?.is_admin ? [["storage", "Storage", "folder", "Where videos and clips are kept"]] : [])];
 function aiHints() {
   const k = S.ai, sel = $("#ai_provider"); if (!k || !sel) return;
-  const pv = k.providers.find(x => x.id === sel.value) || k.providers[0], same = pv.id === k.provider;
-  const countInfo = k.keys_count > 1 ? ` (${k.keys_count} keys active, auto-shift ON)` : "";
-  $("#ai_key").placeholder = same && k.has_key ? `Saved${k.key_hint ? " (" + k.key_hint + ")" : ""}${countInfo}. Paste new key(s) to replace` : pv.needs_key ? "Paste your API key (or multiple keys separated by commas or newlines)" : "Not needed";
+  const pv = k.providers.find(x => x.id === sel.value) || k.providers[0];
+  const provInfo = k.all_providers?.[pv.id];
+  const hasSavedKey = provInfo ? provInfo.has_key : (pv.id === k.provider && k.has_key);
+  const keysCount = provInfo ? provInfo.keys_count : (pv.id === k.provider ? k.keys_count : 0);
+  const countInfo = keysCount > 1 ? ` (${keysCount} keys active, auto-shift ON)` : (keysCount === 1 ? ` (1 key saved)` : "");
+  $("#ai_key").placeholder = hasSavedKey ? `Saved${countInfo}. Paste new key(s) to add or replace` : pv.needs_key ? "Paste your API key (or multiple keys separated by commas or newlines)" : "Not needed";
   $("#ai_keyhint").innerHTML = (pv.key_url ? `${pv.needs_key ? "Get a key at" : "Set it up at"} <a href="${esc(pv.key_url)}" target="_blank" rel="noopener">${esc(pv.key_url.replace("https://", ""))}</a>. ` : "") +
-    (pv.needs_key ? `<b>💡 Multi-Key Fallback:</b> Paste multiple keys separated by commas or newlines. When one key hits rate limit or quota tier limit (HTTP 429), Moment-CUT seamlessly auto-shifts to the next key without failing.` : "The key stays on this server and is never shown again.");
+    (pv.needs_key ? `<b>💡 Multi-Provider Auto-Failover:</b> You can configure multiple keys and multiple providers (Gemini, Groq, Meta). If your primary provider or key hits rate limit (HTTP 429), Moment-CUT automatically shifts to the next key or provider seamlessly.` : "The key stays on this server and is never shown again.");
+  if (provInfo && provInfo.models && provInfo.models.length && pv.id !== k.provider && !$("#ai_model").value) {
+    $("#ai_model").value = provInfo.models.join(", ");
+  } else if (!$("#ai_model").value && pv.example) {
+    $("#ai_model").value = pv.example;
+  }
   $("#ai_model").placeholder = pv.example ? "For example " + pv.example : "The model id, exactly as the service names it";
   $("#ai_base").placeholder = pv.address || "http://127.0.0.1:1234/v1";
-  $("#ai_basewrap").hidden = pv.id !== "custom" && !(same && k.base_url);
+  $("#ai_basewrap").hidden = pv.id !== "custom" && !(pv.id === k.provider && k.base_url);
 }
 async function drawSettings() {
   const box = $("#sform"); if (!box) return;
@@ -2192,6 +2200,10 @@ async function drawSettings() {
       const k = S.ai = await api("/api/ai");
       body.innerHTML = `<section class="set-sec"><h2>AI</h2><p class="help">Moment-CUT uses an AI model to pick the moments worth clipping and to write hooks, titles and captions. Use your own key from any of these services. You pay that service directly. Without a key, clips are picked by loudness.</p>
           <div class="ai-state">${k.ready ? `<span class="pill ok">${ic("check")}Ready</span><span class="sub">${esc(k.label)} · ${esc(k.models[0] || "")}${k.keys_count > 1 ? ` · ⚡ <b>${k.keys_count} keys pooled</b> (auto-shift ON)` : ""}</span>` : `<span class="pill warn">Not set up</span><span class="sub">Choose a service, paste your key and pick a model.</span>`}</div>
+          ${k.fallback_summary ? `<div class="ai-chain-info" style="margin:12px 0;padding:9px 13px;background:#FDF9EE;border:1px solid rgba(26,188,164,0.35);border-radius:8px;font-size:12px;color:var(--brand-ink);line-height:1.4">
+            <b>⚡ Active Auto-Failover Chain:</b> <span style="font-weight:700;color:var(--brand)">${esc(k.fallback_summary)}</span>
+            <p style="margin:3px 0 0;font-size:11px;color:var(--dim)">If your primary provider or key hits rate/quota limits (HTTP 429), Moment-CUT automatically shifts to the next key or provider in this chain without failing video jobs.</p>
+          </div>` : ""}
           <div class="ai-form">
             <label class="f">AI service<select id="ai_provider">${k.providers.map(x => `<option value="${esc(x.id)}" ${x.id === k.provider ? "selected" : ""}>${esc(x.label)}</option>`).join("")}</select></label>
             <label class="f">Key(s) &amp; Auto-Fallback Pool<textarea id="ai_key" rows="2" style="font-family:monospace;font-size:12px;resize:vertical;border-radius:6px;padding:8px" autocomplete="off" spellcheck="false"></textarea><span class="hint" id="ai_keyhint"></span></label>
@@ -2396,7 +2408,16 @@ document.addEventListener("dragleave", () => $(".composer")?.classList.remove("o
 document.addEventListener("drop", e => { const a = $(".composer"); if (a) { e.preventDefault(); a.classList.remove("over"); attach(e.dataTransfer.files); } });
 document.addEventListener("change", async e => {
   const t = e.target;
-  if (t.id === "ai_provider") { $("#ai_models").innerHTML = ""; if (S.ai && t.value !== S.ai.provider) { $("#ai_model").value = ""; $("#ai_base").value = ""; } return aiHints(); }
+  if (t.id === "ai_provider") {
+    $("#ai_models").innerHTML = "";
+    if (S.ai && t.value !== S.ai.provider) {
+      const provInfo = S.ai.all_providers?.[t.value];
+      $("#ai_model").value = (provInfo && provInfo.models && provInfo.models[0]) || (S.ai.providers.find(x => x.id === t.value)?.example || "");
+      $("#ai_base").value = "";
+      $("#ai_key").value = "";
+    }
+    return aiHints();
+  }
   if (t.dataset.sel) {
     const k = t.dataset.sel;
     if (t.checked) sel().add(k); else sel().delete(k);
