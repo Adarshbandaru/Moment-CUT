@@ -915,6 +915,50 @@ def delete_job(jid: str):
     return {"ok": True}
 
 
+@app.post("/api/jobs/{jid}/retry")
+def retry_job(jid: str, body: dict = Body({})):
+    _need_verified()
+    _quota()
+    job = _job_or_404(jid)
+    try:
+        jobs.retry(jid, more=bool((body or {}).get("more")))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    except KeyError as e:
+        raise HTTPException(404, str(e))
+    return jobs.public(job)
+
+
+@app.get("/api/jobs/{jid}/clips/{cid}/words")
+def get_clip_words(jid: str, cid: str):
+    _job_or_404(jid)
+    try:
+        return {"words": jobs.get_clip_words(jid, cid)}
+    except KeyError:
+        raise HTTPException(404, "No such clip")
+
+
+@app.post("/api/jobs/{jid}/clips/{cid}/thumbnail")
+def set_clip_thumbnail(jid: str, cid: str, body: dict = Body(...)):
+    _job_or_404(jid)
+    try:
+        t = float(body.get("time", 1.0))
+        return jobs.set_thumbnail(jid, cid, t)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/jobs/{jid}/compilation")
+def create_compilation(jid: str):
+    _need_verified()
+    _job_or_404(jid)
+    _throttle("concat:" + ctx.uid(), 10, 300)
+    try:
+        return jobs.make_compilation(jid)
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
 def _pairs(v, limit=300) -> list:
     """[[video id, clip id], ...] from the page, checked."""
     out = []
@@ -989,7 +1033,8 @@ def delete_my_account(request: Request, body: dict = Body(...)):
 def media_file(jid: str, name: str, download: int = 0):
     if not re.fullmatch(r"[\w\-]+\.(mp4|jpg)", name):
         raise HTTPException(404)
-    f = Path(_job_or_404(jid)["dir"]) / "clips" / name
+    job_d = Path(_job_or_404(jid)["dir"])
+    f = job_d / "compilation.mp4" if name == "compilation.mp4" else job_d / "clips" / name
     if not f.is_file():
         raise HTTPException(404)
     return FileResponse(f, filename=name if download else None, headers={"Cache-Control": "private, max-age=300"})
@@ -1303,12 +1348,40 @@ def _back(**q):
 
 @app.get("/oauth/{platform}/start")
 def connect_start(platform: str):
+    if platform == "rumble":
+        from . import rumble
+        rumble.launch_login()
+        return _back(rumble_started=1)
     if platform not in accounts.PLATFORM_NAMES:
         raise HTTPException(404)
     try:
         return RedirectResponse(accounts.connect_url(platform), 303)
     except ValueError as e:
         return _back(connect_error=str(e))
+
+
+@app.post("/api/rumble/connect")
+def rumble_connect():
+    _need_verified()
+    from . import rumble
+    return rumble.launch_login()
+
+
+@app.post("/api/rumble/cookie")
+def rumble_cookie(body: dict):
+    _need_verified()
+    from . import rumble
+    cookie_val = body.get("cookie", "")
+    username = body.get("username", "Rumble Creator")
+    if not cookie_val:
+        raise HTTPException(400, "Cookie value is required")
+    return rumble.save_cookie_session(cookie_val, username)
+
+
+@app.get("/api/rumble/status")
+def rumble_status():
+    from . import rumble
+    return rumble.session_info()
 
 
 @app.get("/oauth/{platform}/callback")

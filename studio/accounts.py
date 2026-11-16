@@ -33,6 +33,7 @@ IG_SCOPES = "instagram_business_basic,instagram_business_content_publish"
 TT = "https://open.tiktokapis.com/v2"
 TT_SCOPES = "user.info.basic,video.publish"
 PLATFORM_NAMES = {"youtube": "YouTube", "instagram": "Instagram", "tiktok": "TikTok"}
+ALL_PLATFORMS = {**PLATFORM_NAMES, "rumble": "Rumble"}
 
 
 def _dir() -> Path:
@@ -106,7 +107,9 @@ def app_keys(name: str) -> tuple:
 
 
 def can_connect(platform: str) -> bool:
-    return all(app_keys(APP_FOR[platform]))
+    if platform == "rumble":
+        return True
+    return all(app_keys(APP_FOR.get(platform, "")))
 
 
 def redirect_for(platform: str) -> str:
@@ -272,7 +275,7 @@ def public_settings() -> dict:
 
 # ------------------------------------------------------------------ accounts
 def _all() -> list:
-    return [a for a in _read("accounts.json", []) if a.get("platform") in PLATFORM_NAMES]
+    return [a for a in _read("accounts.json", []) if a.get("platform") in ALL_PLATFORMS]
 
 
 def get(aid):
@@ -280,7 +283,7 @@ def get(aid):
 
 
 def list_accounts() -> list:
-    return [{"id": a["id"], "platform": a["platform"], "label": PLATFORM_NAMES[a["platform"]], "name": a["name"],
+    return [{"id": a["id"], "platform": a["platform"], "label": ALL_PLATFORMS.get(a["platform"], a["platform"]), "name": a["name"],
              "added": a["added"], "detail": a.get("detail", "")} for a in _all()]
 
 

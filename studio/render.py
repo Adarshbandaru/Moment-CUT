@@ -155,7 +155,7 @@ def _hook_events(hook, dur, y):
     return ev
 
 
-def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y) -> str:
+def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y, watermark="") -> str:
     st = STYLES.get(style_name, STYLES["bounce"])
     words = [dict(w, s=w["s"] - CAPTION_LEAD, e=w["e"] - CAPTION_LEAD) for w in words]
     strong = {_key(h) for h in highlight if _key(h)}
@@ -170,12 +170,17 @@ ScaledBorderAndShadow: yes
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,{st['font']},{st['size']},&H00{st['base']},&H00{st['base']},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,{st['outline']},0,5,0,0,0,1
 Style: Hook,{HOOK['font']},{HOOK['size']},&H00{HOOK['ink']},&H00{HOOK['ink']},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
+Style: Watermark,Poppins ExtraBold,34,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,2,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     dur = end - start
     ev = _hook_events(_clean(hook), dur, hook_y)
+    if watermark:
+        wm_text = _clean(watermark)
+        if wm_text:
+            ev.append(f"Dialogue: 0,{_ts(0)},{_ts(dur)},Watermark,,0,0,0,,{{\\an2\\pos(540,1750)\\fad(300,0)\\c&HFFFFFF&\\3c&H000000&\\bord3\\shad1\\fs34}}{wm_text}")
     f = _Font.get(st["font"])
     inside = [dict(w, w=_clean(w["w"])) for w in words if w["s"] >= start - 0.05 and w["s"] < end]
     inside = [w for w in inside if w["w"]]
@@ -237,7 +242,7 @@ def render_clip(src: Path, out_dir: Path, name: str, clip: dict, words: list, sr
     start, end = clip["start"], clip["end"]
     layout, fg_h, hook_y, cap_y = geometry(src_w, src_h, clip.get("layout", "blur"))
     ass = build_ass(words, start, end, clip.get("hook", ""), clip.get("style", "bounce"),
-                    clip.get("highlight_words", []), hook_y, cap_y)
+                    clip.get("highlight_words", []), hook_y, cap_y, clip.get("watermark", ""))
     # The clip is made in a short work folder and moved into place afterwards. The caption step of ffmpeg cannot
     # open files whose full path is longer than 260 characters on Windows, which a data folder deep inside other
     # folders easily reaches. Inside the work folder every name is short and relative (a drive colon would also
@@ -282,3 +287,43 @@ def _render_in(work: Path, src: Path, out_dir: Path, name: str, start, end, layo
     for ext in ("mp4", "jpg", "ass"):
         shutil.move(str(work / f"{name}.{ext}"), str(out_dir / f"{name}.{ext}"))
     return {"file": f"{name}.mp4", "cover": f"{name}.jpg", "layout": layout}
+
+
+def extract_cover(clip_mp4: Path, out_jpg: Path, t: float = 1.0) -> Path:
+    """Grabs a frame from clip_mp4 at timestamp t and saves as out_jpg."""
+    t_sec = max(0.0, float(t))
+    run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t_sec:.2f}", "-i", str(clip_mp4),
+         "-frames:v", "1", "-q:v", "3", str(out_jpg)])
+    return out_jpg
+
+
+def make_compilation(clip_paths: list[Path], out_file: Path) -> Path:
+    """Concatenates finished vertical clips into one highlight reel MP4 without external AI."""
+    if not clip_paths:
+        raise ValueError("No clips to combine.")
+    if len(clip_paths) == 1:
+        shutil.copyfile(str(clip_paths[0]), str(out_file))
+        return out_file
+
+    work = Path(tempfile.mkdtemp(prefix="pk_cat"))
+    try:
+        list_file = work / "files.txt"
+        with open(list_file, "w", encoding="utf-8") as f:
+            for cp in clip_paths:
+                esc = str(cp.resolve()).replace("\\", "/")
+                f.write(f"file '{esc}'\n")
+
+        # Fast concat copy first
+        p = subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                            "-i", str(list_file), "-c", "copy", "-movflags", "+faststart", str(out_file)],
+                           capture_output=True, text=True, creationflags=NO_WINDOW)
+        if p.returncode != 0 or not out_file.is_file() or out_file.stat().st_size == 0:
+            # Fallback to fast re-encode if timestamps or codecs differ slightly
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                            "-i", str(list_file), "-c:v", "libx264", "-crf", "22", "-preset", "veryfast",
+                            "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(out_file)],
+                           check=True, capture_output=True, text=True, creationflags=NO_WINDOW)
+        return out_file
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+

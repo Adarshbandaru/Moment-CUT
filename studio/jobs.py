@@ -108,7 +108,7 @@ _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 720,
-            "range_start": None, "range_end": None}
+            "range_start": None, "range_end": None, "watermark": ""}
 
 
 LIMITS = {"max_clips": (1, 20), "min_len": (5, 120), "max_len": (10, 180), "quality": (360, 1080)}
@@ -127,6 +127,8 @@ def clean_options(options) -> dict:
             v = v if v in render.STYLES else DEFAULTS["style"]
         elif k == "layout":
             v = v if v in render.LAYOUTS else DEFAULTS["layout"]
+        elif k == "watermark":
+            v = str(v).strip()[:100]
         else:                                    # range_start, range_end: seconds into the video
             v = float(v)
             if not math.isfinite(v) or v < 0:
@@ -175,7 +177,14 @@ def save(job):
             return
         tmp = d / "job.json.tmp"
         tmp.write_text(text, encoding="utf-8")
-        tmp.replace(d / "job.json")
+        for i in range(10):
+            try:
+                tmp.replace(d / "job.json")
+                break
+            except OSError:
+                if i == 9:
+                    raise
+                time.sleep(0.05)
 
 
 def _set(job, **kw):
@@ -281,9 +290,14 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
     c = creators.get(creator) if creator else None
     if c:
         d = creators.root(c["id"]) / ("live" if kind == "live" else "videos") / jid
-        base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout")}}
+        base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout", "watermark") if k in c}}
+        if not base.get("watermark") and c.get("name"):
+            base["watermark"] = c["name"]
     else:
         d, base, creator = config.user_dir(ctx.uid()) / "jobs" / jid, dict(DEFAULTS), None
+        all_c = creators.all_creators()
+        if all_c:
+            base["watermark"] = all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN"
     d.mkdir(parents=True)
     opts = {**base, **clean_options(options)}
     if opts["min_len"] >= opts["max_len"]:
@@ -335,6 +349,26 @@ def delete(jid):
     return bool(job)
 
 
+def retry(jid: str, more: bool = False):
+    job = _jobs.get(jid)
+    if not job:
+        raise KeyError("No such video")
+    if job.get("status") in ("queued", "running", "live"):
+        raise ValueError("This video is already being processed.")
+    if more or job.get("status") == "done":
+        cur_max = int(job.get("options", {}).get("max_clips") or 6)
+        job.setdefault("options", {})["max_clips"] = min(20, cur_max + 6)
+        job.update(status="queued", stage="Waiting", progress=0.0, error=None, done_blocks=0)
+    else:
+        job.update(status="queued", stage="Waiting", progress=0.0, error=None, done_blocks=0)
+        for c in job.get("clips", []):
+            if c.get("status") == "error":
+                c.update(status="queued", error=None)
+    save(job)
+    _q.put(("job", jid, None), user=job["user"])
+    return job
+
+
 def request_render(jid, cid, changes: dict):
     job = _jobs[jid]
     clip = next(c for c in job["clips"] if c["id"] == cid)
@@ -349,9 +383,21 @@ def request_render(jid, cid, changes: dict):
         raise ValueError("Those times aren't valid.")
     if not 3 <= new["end"] - new["start"] <= 180:
         raise ValueError("A clip can be 3 to 180 seconds long.")
-    for k in ("hook", "title", "description", "style", "layout"):
+    for k in ("hook", "title", "description", "style", "layout", "watermark"):
         if k in changes:
-            new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000}.get(k, 20)]
+            new[k] = str(changes[k])[:{"hook": 60, "title": 100, "description": 2000, "watermark": 100}.get(k, 20)]
+    if "words" in changes and isinstance(changes["words"], list):
+        cleaned = []
+        for item in changes["words"]:
+            if isinstance(item, dict) and "w" in item and "s" in item and "e" in item:
+                cleaned.append({
+                    "w": str(item["w"])[:60],
+                    "s": round(float(item["s"]), 2),
+                    "e": round(float(item["e"]), 2),
+                })
+        if cleaned:
+            new["fixed_words"] = cleaned
+            new["fixed_for"] = [round(new["start"], 2), round(new["end"], 2), "en2"]
     if new.get("style") not in render.STYLES:
         new["style"] = DEFAULTS["style"]
     if new.get("layout") not in render.LAYOUTS:
@@ -359,6 +405,73 @@ def request_render(jid, cid, changes: dict):
     clip.update(new, status="queued")
     save(job)
     _q.put(("clip", jid, cid))
+
+
+def get_clip_words(jid: str, cid: str) -> list:
+    job = _jobs.get(jid)
+    if not job:
+        raise KeyError(jid)
+    clip = next((c for c in job["clips"] if c["id"] == cid), None)
+    if not clip:
+        raise KeyError(cid)
+    if clip.get("fixed_words"):
+        return clip["fixed_words"]
+    wf = Path(job["dir"]) / "words.json"
+    if wf.is_file():
+        try:
+            all_words = json.loads(wf.read_text(encoding="utf-8"))
+            return [w for w in all_words if clip["start"] - 0.5 <= w["s"] <= clip["end"] + 0.5]
+        except Exception:
+            pass
+    return []
+
+
+def set_thumbnail(jid: str, cid: str, t: float = 1.0) -> dict:
+    job = _jobs.get(jid)
+    if not job:
+        raise KeyError(jid)
+    clip = next((c for c in job["clips"] if c["id"] == cid), None)
+    if not clip:
+        raise KeyError(cid)
+    d = Path(job["dir"])
+    clip_mp4 = d / "clips" / f"{clip['id']}.mp4"
+    if not clip_mp4.is_file():
+        raise RuntimeError("Clip video file not found.")
+    cover_jpg = d / "clips" / f"{clip['id']}.jpg"
+    render.extract_cover(clip_mp4, cover_jpg, t)
+    clip["cover_time"] = round(t, 2)
+    clip["version"] = clip.get("version", 0) + 1
+    save(job)
+    ctx.bump()
+    return {"ok": True, "cover": f"{clip['id']}.jpg", "time": t, "version": clip["version"]}
+
+
+def make_compilation(jid: str) -> dict:
+    job = _jobs.get(jid)
+    if not job:
+        raise KeyError(jid)
+    d = Path(job["dir"])
+    done_clips = [c for c in job.get("clips", []) if c.get("status") == "done"]
+    if not done_clips:
+        raise RuntimeError("No completed clips to combine.")
+    clip_paths = []
+    for c in done_clips:
+        p = d / "clips" / f"{c['id']}.mp4"
+        if p.is_file():
+            clip_paths.append(p)
+    if not clip_paths:
+        raise RuntimeError("No clip video files found.")
+    out_file = d / "compilation.mp4"
+    render.make_compilation(clip_paths, out_file)
+    job["compilation"] = {
+        "file": "compilation.mp4",
+        "clip_count": len(clip_paths),
+        "created": time.time(),
+    }
+    save(job)
+    ctx.bump()
+    return {"ok": True, "file": "compilation.mp4", "clip_count": len(clip_paths)}
+
 
 
 def render_one(job, clip, words):
@@ -370,7 +483,19 @@ def render_one(job, clip, words):
         src = Path(clip["src"]) if clip.get("src") else Path(job["source_path"])
         if not clip.get("src"):
             clip["end"] = min(clip["end"], job["duration"])
-        local = dict(clip, start=clip["start"] - off, end=clip["end"] - off, hook=roman.to_roman(clip.get("hook") or ""))
+        watermark = clip.get("watermark") or (job.get("options") or {}).get("watermark") or ""
+        if not watermark and job.get("creator"):
+            cr = creators.get(job["creator"])
+            if cr:
+                watermark = cr.get("watermark") or cr.get("name") or ""
+        if not watermark:
+            all_c = creators.all_creators()
+            if all_c:
+                watermark = all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN"
+            else:
+                watermark = "@IShowSpeed_IN"
+        local = dict(clip, start=clip["start"] - off, end=clip["end"] - off,
+                     hook=roman.to_roman(clip.get("hook") or ""), watermark=watermark)
         span = [round(clip["start"], 2), round(clip["end"], 2), "en2"]      # "en2": captions made always-English
         if clip.get("fixed_for") == span and clip.get("fixed_words") and not any(
                 roman.needs_roman(w.get("w", "")) for w in clip["fixed_words"]):
@@ -492,7 +617,14 @@ def _run_job(job):
         pieces = span > LONG_VIDEO or meta["duration"] <= 0
         if not pieces:  # shorter video: fetch all of it in the background while the audio is worked on
             video = fetch.submit(media.download, src["url"], d, int(o["quality"]))
-        audio_file = media.download_audio(src["url"], d, lambda p: _set(job, progress=0.03 + 0.1 * p))
+        last_ap = [0.0]
+
+        def _on_audio(p):
+            if p - last_ap[0] >= 0.02 or p >= 1.0:
+                last_ap[0] = p
+                _set(job, progress=0.03 + 0.1 * p)
+
+        audio_file = media.download_audio(src["url"], d, _on_audio)
     else:
         pieces, audio_file = False, Path(src["path"])
         info = media.probe(audio_file)
@@ -633,9 +765,14 @@ def _run_job(job):
         model = ai.get("model") or model
         if ai.get("note"):
             notes.append(ai["note"])
+        wm = o.get("watermark") or (creators.get(job.get("creator")) or {}).get("watermark") or (creators.get(job.get("creator")) or {}).get("name") or ""
+        if not wm:
+            all_c = creators.all_creators()
+            wm = (all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN") if all_c else "@IShowSpeed_IN"
         for c in found:
             c.update(id=f"clip{len(job['clips']) + 1:02d}", start=round(c["start"] + shift, 2),
-                     end=round(c["end"] + shift, 2), style=o["style"], layout=o["layout"], status="queued", version=0)
+                     end=round(c["end"] + shift, 2), style=o["style"], layout=o["layout"],
+                     watermark=wm, status="queued", version=0)
             job["clips"].append(c)
             futures.append(renders.submit(ctx.bind(make), c, list(words)))
         job["ai"] = {"model": model, "tokens": tokens, "note": "", "log": notes[-5:]}

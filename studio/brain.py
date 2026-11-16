@@ -201,19 +201,63 @@ def _snap(clip, lines, words, min_len, max_len, duration):
 
 
 def fallback_by_loudness(db, words, n, max_len, duration):
-    """No AI available: take the loudest stretches that contain speech."""
+    """No AI available: take the loudest stretches that contain speech, and extract local hooks and titles."""
     z = loud_zscore(db)
     picks, order = [], np.argsort(-z)
+
+    hype_keywords = {
+        "bro": "funny", "omg": "shock", "what": "shock", "no way": "shock", "shut up": "rage",
+        "insane": "clutch", "gg": "clutch", "speed": "clutch", "run": "clutch", "watch": "other",
+        "listen": "take", "damn": "shock", "holy": "shock", "laugh": "funny", "win": "clutch",
+        "fail": "fail", "miss": "fail", "crazy": "shock", "legend": "clutch"
+    }
+
     for sec in order:
         s = max(0.0, float(sec) - max_len * 0.6)
         e = min(duration, s + max_len)
         if any(not (e <= p["start"] or s >= p["end"]) for p in picks):
             continue
-        if not any(s <= w["s"] <= e for w in words):
+        span_words = [w for w in words if s <= w["s"] <= e]
+        if not span_words:
             continue
-        picks.append({"start": s, "end": e, "score": 50, "category": "other", "hook": "WAIT FOR IT",
-                      "title": "Loud moment", "description": "", "hashtags": [], "highlight_words": [],
-                      "reason": "Picked by loudness because the AI was unavailable."})
+
+        peak_z = float(z[int(s): int(e) + 1].max()) if len(z) > int(s) else 1.5
+        score = min(95, max(50, int(50 + peak_z * 12)))
+
+        full_text = " ".join(w["w"] for w in span_words).strip()
+        text_lower = full_text.lower()
+
+        category = "other"
+        for kw, cat in hype_keywords.items():
+            if kw in text_lower:
+                category = cat
+                break
+
+        peak_sec = float(sec)
+        near_peak = [w["w"] for w in span_words if abs(w["s"] - peak_sec) <= 4.0]
+        if not near_peak:
+            near_peak = [w["w"] for w in span_words[:5]]
+
+        hook_candidate = " ".join(near_peak[:4]).upper()
+        hook_candidate = re.sub(r"[^\w\s]", "", hook_candidate).strip()
+        if len(hook_candidate) < 3 or len(hook_candidate.split()) < 1:
+            hook = "WAIT FOR IT" if peak_z > 2.0 else "BEST MOMENT"
+        else:
+            hook = " ".join(hook_candidate.split()[:4])
+
+        first_sentence = full_text.split(".")[0].split("?")[0].split("!")[0]
+        clean_title = re.sub(r"\s+", " ", first_sentence).strip()
+        if len(clean_title) > 65:
+            clean_title = clean_title[:65].rsplit(" ", 1)[0]
+        title = clean_title.capitalize() if len(clean_title) >= 6 else f"Stream highlight #{len(picks) + 1}"
+
+        highlight_words = [re.sub(r"\W", "", w).upper() for w in near_peak if len(w) > 3][:4]
+        tags = ["stream", "highlight", "shorts", category] if category != "other" else ["stream", "highlight", "shorts", "viral"]
+
+        picks.append({"start": s, "end": e, "score": score, "category": category, "hook": hook[:60],
+                      "title": title[:100], "description": full_text[:250], "hashtags": tags,
+                      "highlight_words": highlight_words,
+                      "reason": "Picked locally by audio energy and spoken speech without API tokens."})
         if len(picks) >= n:
             break
     return picks

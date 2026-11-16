@@ -1351,8 +1351,9 @@ function drawAdd(variant) {
     <div class="att" id="att"><div><div class="att-in" id="attIn"></div></div></div>
     <div class="composer-bar">
       <button type="button" class="chip" data-act="pickfile">${ic("up")}Upload video</button>
-      ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], "")}
+      ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
       <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
+      ${(S.accounts || []).some(a => a.platform === "rumble") ? `<span class="chip" style="color:var(--c-ok);border-color:var(--c-ok);pointer-events:none" title="Finished clips will automatically be uploaded to Rumble">${ic("check")}Auto-upload to Rumble: ON</span>` : ""}
       <span class="grow"></span><span class="hint">or drop a video file here</span>
       <button class="btn primary" id="goBtn">${ic("scissors")}Make clips</button>
     </div>
@@ -2079,11 +2080,19 @@ async function drawSettings() {
         return `<div class="appcard"><span class="applogo" style="background:${bg}">${logo}</span>
           <div class="apptx"><b>${name}</b><span>${desc}</span>${listOf(accs)}</div><div class="appact">${act}</div>${panel}</div>`;
       };
+      const rb = '<svg viewBox="0 0 24 24"><path fill="#fff" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/></svg>';
+      const rbCard = () => {
+        const accs = mine("rumble");
+        const act = `<div class="row" style="gap:6px"><button class="btn sm primary" data-act="rumblelogin">${ic("plus")}${accs.length ? "Reconnect" : "Connect Browser"}</button><button class="btn sm ghost" data-act="rumblecookie">Paste Cookie</button></div>`;
+        return `<div class="appcard"><span class="applogo" style="background:#85c742">${rb}</span>
+          <div class="apptx"><b>Rumble</b><span>Automated posting via browser automation. Click Connect Browser (or run <code>connect_rumble.bat</code>) or Paste Cookie to connect.</span>${listOf(accs)}</div><div class="appact">${act}</div></div>`;
+      };
       body.innerHTML = `<section class="set-sec"><h2>Connected apps</h2><p class="help">Connect the accounts PeakCut posts clips to: press Connect, sign in on the platform's own page, and you're back here. PeakCut never sees your passwords. Then pick which accounts each creator posts to, in that creator's Setup.</p>
         <div class="apps">
           ${card("youtube", "YouTube", yt, "#FF0000", "Post clips to your channel as Shorts.")}
           ${card("instagram", "Instagram", ig, "linear-gradient(45deg,#F58529,#DD2A7B,#8134AF)", "Post clips as Reels. Needs a Creator or Business account.")}
           ${card("tiktok", "TikTok", tt, "#000", "Post clips straight to your TikTok.")}
+          ${rbCard()}
         </div></section>`;
     }
   } catch (e) { body.innerHTML = `<div class="set-load">${esc(e.message)}</div>`; }
@@ -2375,6 +2384,44 @@ document.addEventListener("click", async e => {
     if (a === "appsave") {
       await send("/api/apps", {platform: d.p, client_id: $("#app_id").value, client_secret: $("#app_secret").value}, "PUT");
       S.setupOpen = ""; S.status = await api("/api/status"); toast("Saved. People can connect now.", "ok"); return drawSettings();
+    }
+    if (a === "rumblelogin") {
+      b.disabled = true;
+      try {
+        await api("/api/rumble/connect", {method:"POST"});
+        toast("Opening Rumble sign-in window on your desktop...", "ok");
+        let tries = 0;
+        const checkTimer = setInterval(async () => {
+          tries++;
+          if (tries > 80) { clearInterval(checkTimer); b.disabled = false; return; }
+          try {
+            const st = await api("/api/rumble/status");
+            if (st && st.connected) {
+              clearInterval(checkTimer);
+              b.disabled = false;
+              toast("Rumble connected successfully: " + (st.username || "Rumble Creator"), "ok");
+              drawSettings();
+            }
+          } catch {}
+        }, 2500);
+      } catch (e) {
+        toast(e.message, "bad");
+        b.disabled = false;
+      }
+      return;
+    }
+    if (a === "rumblecookie") {
+      const c = prompt("Paste your Rumble session cookie value (u_s):");
+      if (!c) return;
+      const u = prompt("Enter your Rumble channel name (optional):", "Rumble Creator") || "Rumble Creator";
+      try {
+        await send("/api/rumble/cookie", {cookie: c.trim(), username: u.trim()});
+        toast("Rumble account connected successfully!", "ok");
+        drawSettings();
+      } catch (e) {
+        toast(e.message, "bad");
+      }
+      return;
     }
     if (a === "bell") return openBell();
     if (a === "feedback") return openFeedback("bug");

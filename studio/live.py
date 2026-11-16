@@ -177,10 +177,18 @@ class Session:
             with self.lock:
                 self.seg_clock = max(self.seg_clock, self.samples / SR)
             p = f"p{self.part:02d}"
-            cmd = ["ffmpeg", "-v", "error", "-reconnect", "1", "-reconnect_streamed", "1",
-                   "-reconnect_delay_max", "10"]
+            cmd = ["ffmpeg", "-v", "error"]
             for u in info["urls"]:
-                cmd += ["-i", u]
+                cmd += [
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "10",
+                    "-reconnect_on_network_error", "1",
+                    "-allowed_segment_extensions", "ALL",
+                    "-allowed_extensions", "ALL",
+                    "-extension_picky", "0",
+                    "-i", u,
+                ]
             a_in = "1:a:0" if len(info["urls"]) > 1 else "0:a:0"
             cmd += ["-map", "0:v:0", "-map", a_in, "-c", "copy", "-f", "segment", "-segment_time", str(SEG_SEC),
                     "-reset_timestamps", "1", "-segment_format", "mpegts", "-segment_list", f"{p}.csv",
@@ -444,8 +452,9 @@ class Session:
 
     def _add_clip(self, c):
         self.n += 1
+        wm = self.settings.get("watermark") or self.creator.get("watermark") or self.creator.get("name") or ""
         c.update(id=f"clip{self.n:03d}", style=self.settings["style"], layout=self.settings["layout"],
-                 status="queued", version=0, made_at=time.time())
+                 watermark=wm, status="queued", version=0, made_at=time.time())
         with self.lock:
             self.job["clips"].append(c)
         jobs.save(self.job)

@@ -55,7 +55,7 @@ def _next_slot(account_id, gap_min, cap):
 
 
 def enqueue(job, clip, account_ids, now=False) -> list:
-    c = creators.get(job["creator"]) or creators.DEFAULTS
+    c = creators.get(job.get("creator")) or creators.DEFAULTS
     made = []
     with _lock:
         for aid in account_ids:
@@ -65,8 +65,8 @@ def enqueue(job, clip, account_ids, now=False) -> list:
             if any(p["job"] == job["id"] and p["clip"] == clip["id"] and p["account"] == aid
                    and p["status"] in OPEN + ("posted",) for p in _mine()):
                 continue  # never post the same clip to the same account twice
-            due = time.time() if now else _next_slot(aid, c["post_gap_min"], c["daily_cap"])
-            p = {"id": secrets.token_hex(8), "user": ctx.uid(), "job": job["id"], "clip": clip["id"], "creator": job["creator"],
+            due = time.time() if now else _next_slot(aid, c.get("post_gap_min", 1), c.get("daily_cap", 50))
+            p = {"id": secrets.token_hex(8), "user": ctx.uid(), "job": job["id"], "clip": clip["id"], "creator": job.get("creator"),
                  "account": aid, "account_name": acc["name"], "platform": acc["platform"], "status": "scheduled",
                  "due_at": due, "created": time.time(), "title": clip.get("title") or clip.get("hook") or "Clip",
                  "score": clip.get("score", 0), "tries": 0, "url": "", "remote_id": "", "error": None, "views": None}
@@ -80,10 +80,28 @@ def enqueue(job, clip, account_ids, now=False) -> list:
 
 def on_clip_ready(job, clip):
     """Called once when a clip first finishes rendering."""
-    c = creators.get(job["creator"])
-    if not c or not c["autopost"] or not c["accounts"]:
+    cid = job.get("creator")
+    c = creators.get(cid) if cid else None
+    if not c:
+        # If job was created without an explicit creator, check if any creator has autopost on
+        active = [cr for cr in creators.all_creators() if cr.get("autopost") and cr.get("accounts")]
+        if active:
+            c = active[0]
+            job["creator"] = c["id"]
+            jobs.save(job)
+    if not c:
+        # Check if Rumble or any account is connected for auto-posting
+        from . import rumble
+        if rumble.is_ready():
+            rumble_accs = [a["id"] for a in accounts.list_accounts() if a.get("platform") == "rumble"]
+            if rumble_accs:
+                made = enqueue(job, clip, [rumble_accs[0]])
+                if made:
+                    alerts.notify(f"Queued for Rumble: {clip.get('title') or clip.get('hook')}", kind="post")
         return
-    if clip.get("score", 0) < c["post_min_score"]:
+    if not c.get("autopost") or not c.get("accounts"):
+        return
+    if clip.get("score", 0) < c.get("post_min_score", 0):
         return  # includes hand-made clips (score 0): those wait for you to press Post
     made = enqueue(job, clip, c["accounts"])
     if made:
@@ -113,6 +131,9 @@ def _post(p):
             rid, url = accounts.instagram_upload(acc, path, f"{title}\n\n{cap}", job["id"])
         elif acc["platform"] == "tiktok":
             rid, url = accounts.tiktok_upload(acc, path, f"{title}\n\n{cap}", creator["privacy"])
+        elif acc["platform"] == "rumble":
+            from . import rumble
+            rid, url = rumble.upload_video(path, title, cap, clip.get("hashtags", []), creator.get("privacy", "public"))
         else:
             raise RuntimeError("That kind of account is no longer supported.")
         p.update(status="posted", posted_at=time.time(), remote_id=rid, url=url, error=None)
