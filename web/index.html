@@ -1301,7 +1301,8 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
   const allPosts = allClips.flatMap(c => Object.values(c.posts || {}));
   const postedCount = allPosts.filter(p => p.status === "posted").length;
   const inFlightCount = allPosts.filter(p => p.status === "scheduled" || p.status === "posting").length;
-  const totalPosts = postedCount + inFlightCount;
+  const failedPosts = allPosts.filter(p => p.status === "failed");
+  const totalPosts = postedCount + inFlightCount + failedPosts.length;
   const postPct = totalPosts > 0 ? Math.round((postedCount / totalPosts) * 100) : (allClips.length > 0 ? 100 : null);
 
   const workingJobs = (S.jobs || []).filter(j => ["queued", "running"].includes(j.status));
@@ -1315,12 +1316,13 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
   if (workingJobs.length > 0) {
     uploadBadge = `<span class="prog-pill processing" title="${workingJobs.length} video(s) processing in background">${ic("scissors")}<b>${jobPct}%</b> Clipping</span>`;
   } else if (totalPosts > 0) {
-    const isDone = postPct === 100;
-    uploadBadge = `<span class="prog-pill uploaded" title="${postedCount} of ${totalPosts} clips uploaded to YouTube">${ic(isDone ? "check" : "up")}<b>${postPct}%</b> Uploaded (${postedCount}/${totalPosts})</span>`;
+    const isDone = postPct === 100 && failedPosts.length === 0;
+    uploadBadge = `<span class="prog-pill ${failedPosts.length ? "warn" : "uploaded"}" title="${postedCount} of ${totalPosts} clips uploaded to YouTube (${failedPosts.length} failed)">${ic(isDone ? "check" : "up")}<b>${postPct}%</b> Uploaded (${postedCount}/${totalPosts})</span>`;
   } else if (allClips.length > 0) {
     uploadBadge = `<span class="prog-pill uploaded" title="All clips uploaded to YouTube">${ic("check")}<b>100%</b> Uploaded</span>`;
   }
 
+  const retryFailedBtn = failedPosts.length > 0 ? `<button type="button" class="btn sm danger" data-act="retryallfailed" title="Retry ${failedPosts.length} failed upload(s) - each will try up to 3 times">${ic("rotate")}Retry failed (${failedPosts.length})</button>` : "";
   const ap = S.status?.autopilot || {enabled: true};
   const apBtn = `<button type="button" class="ap-toggle sm ${ap.enabled ? "on" : "off"}" data-act="toggleautopilot" title="Click to toggle Auto-Pilot ${ap.enabled ? "OFF (manual mode)" : "ON (auto-upload to YouTube)"}"><i class="dot"></i>${ap.enabled ? "⚡ Auto-Pilot: ON" : "Auto-Pilot: OFF"}</button>`;
 
@@ -1334,11 +1336,11 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
       `<button class="tabbtn ${S.ctab === k ? "on" : ""}" data-act="tab" data-t="${k}" role="tab" aria-selected="${S.ctab === k}">${ic(i)}${l}${n ? `<span class="n">${n > 99 ? "99+" : n}</span>` : ""}</button>`).join("");
     const liveBtn = c.live_job ? `<button class="btn danger" data-act="stoplive" data-j="${esc(c.live_job)}">${ic("stop")}Stop recording</button>`
                                : `<button class="btn primary" data-act="golive"><span class="rdot"></span>${liveOn(c).length ? "Record live stream" : "Start recording"}</button>`;
-    act = uploadBadge + apBtn + liveBtn;
+    act = uploadBadge + retryFailedBtn + apBtn + liveBtn;
   }
   if (S.view === "overview" || S.view === "library") {
     const L = S.status.links || {};
-    act = uploadBadge + apBtn
+    act = uploadBadge + retryFailedBtn + apBtn
         + (L.repo ? `<a class="btn" href="${esc(L.repo)}" target="_blank" rel="noopener" title="Star PeakCut on GitHub">${ic("github")}<span>Star<span class="long"> on GitHub</span></span></a>` : "")
         + (L.follow ? `<a class="btn primary" href="${esc(L.follow)}" target="_blank" rel="noopener" title="Follow the maker of PeakCut on Instagram">${ic("instagram")}Follow me</a>` : "");
   }
@@ -1352,6 +1354,13 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
   const toolBar = S.status.no_ffmpeg ? `<div class="vb" role="alert">${ic("warn")}<span><b>PeakCut can't make clips yet: ffmpeg isn't installed on this computer.</b> Open a terminal, run <code>winget install Gyan.FFmpeg</code> (Mac: <code>brew install ffmpeg</code>, Linux: <code>sudo apt install ffmpeg</code>), then close PeakCut and start it again.</span></div>` : "";
   const aiBar = !toolBar && S.status.ai?.problem && me?.is_admin && S.view !== "settings" ? `<div class="vb" role="status">${ic("warn")}<span><b>The AI isn't answering.</b> ${esc(S.status.ai.problem)} Until then, clips are picked by loudness.</span><button class="btn sm primary" data-act="go" data-v="settings" data-tab="ai">Open AI settings</button></div>` : "";
   const diskBar = !toolBar && S.status.disk_full && S.view !== "settings" ? `<div class="vb" role="alert">${ic("warn")}<span><b>The drive PeakCut saves to is almost full, so it can't take new videos.</b> Free up space on it, or move PeakCut's folder to a bigger drive.</span>${me?.is_admin ? `<button class="btn sm primary" data-act="go" data-v="settings" data-tab="storage">Open Storage</button>` : ""}</div>` : "";
+
+  const failBanner = failedPosts.length > 0 ? `<div class="vb" style="background:rgba(220,53,69,0.08);border:1px solid rgba(220,53,69,0.25);border-radius:10px;padding:10px 16px;margin:0 0 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px">
+    <div style="display:flex;align-items:center;gap:8px">
+      ${ic("warn")}<span style="color:var(--bad)"><b>${failedPosts.length} clip upload${failedPosts.length === 1 ? "" : "s"} stopped.</b> ${esc(failedPosts[0].error || "Upload failed")}</span>
+    </div>
+    <button class="btn sm danger" data-act="retryallfailed" style="white-space:nowrap">${ic("rotate")}Retry all (${failedPosts.length})</button>
+  </div>` : "";
 
   const progBanner = workingJobs.length > 0 ? `<div class="vb" style="background:var(--muted);border-radius:10px;padding:10px 16px;margin:0 0 14px;display:flex;align-items:center;gap:12px;font-size:13px">
     <div style="flex:1">
@@ -1373,7 +1382,7 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
         <div style="height:100%;width:${postPct}%;background:var(--brand);border-radius:999px;transition:width .3s ease"></div>
       </div>
     </div>
-  </div>` : "");
+  </div>` : failBanner);
 
   put($("#vbanner"), progBanner ? progBanner : toolBar ? toolBar : diskBar ? diskBar : aiBar ? aiBar : upBar ? upBar : me && me.verified === false ? `<div class="vb" role="status">${ic("warn")}<span>Confirm your email to start clipping. We sent a link to <b>${esc(me.email)}</b>.</span><button class="btn sm" data-act="resendverify">Send a new link</button></div>`
     : kk && kk.ready === false && S.view !== "usage" ? `<div class="vb" role="status">${ic("bolt")}<span>${me?.is_admin ? "Add your AI key to let the AI pick clips and write titles. Until then, clips are picked by loudness." : "The AI isn't set up on this server yet, so clips are picked by loudness."}</span>${me?.is_admin && S.view !== "settings" ? `<button class="btn sm primary" data-act="go" data-v="settings" data-tab="ai">${ic("plus")}Add AI key</button>` : ""}</div>` : "");
@@ -1785,7 +1794,11 @@ function postPills(c) {
     const iconSvg = p.platform === "youtube" ? ic("youtube") : "";
     const statusTxt = isOk ? "Uploaded" : p.status === "scheduled" ? clock(p.due_at) : p.status;
     const txt = `${iconSvg}<b>${esc(p.account_name)}</b> · ${statusTxt}`;
-    return p.url ? `<a class="pill ${cls}" href="${esc(p.url)}" target="_blank" rel="noopener" title="Open video in new tab">${txt}</a>` : `<span class="pill ${cls}" title="${esc(p.error || "")}">${txt}</span>`;
+    if (p.url) return `<a class="pill ${cls}" href="${esc(p.url)}" target="_blank" rel="noopener" title="Open video in new tab">${txt}</a>`;
+    if (p.status === "failed") {
+      return `<button type="button" class="pill bad clickable" data-act="pretry" data-id="${p.id}" style="cursor:pointer;border:none;font:inherit;display:inline-flex;align-items:center;gap:4px" title="${esc(p.error || "")} - Click to retry upload (up to 3 attempts)">${txt} · ↻ Retry</button>`;
+    }
+    return `<span class="pill ${cls}" title="${esc(p.error || "")}">${txt}</span>`;
   }).join("");
 }
 function clipHtml(j, c) {
@@ -2607,7 +2620,21 @@ document.addEventListener("click", async e => {
     if (a === "csave") return void await saveCreator();
     if (a === "cdiscard") { drawCreatorForm(); return toast("Changes discarded"); }
     if (a === "pause") { await send("/api/settings", {paused:!S.overview.paused}, "PUT"); return loadOverview(); }
-    if (a === "pcancel" || a === "pretry") { await api(`/api/posts/${d.id}/${a === "pcancel" ? "cancel" : "retry"}`, {method:"POST"}); return loadOverview(); }
+    if (a === "pcancel" || a === "pretry") {
+      await api(`/api/posts/${d.id}/${a === "pcancel" ? "cancel" : "retry"}`, {method:"POST"});
+      toast(a === "pretry" ? "Retrying upload (will try up to 3 times)..." : "Post cancelled", "ok");
+      if (S.view === "overview") return loadOverview();
+      return tick();
+    }
+    if (a === "retryallfailed") {
+      b.disabled = true;
+      try {
+        const res = await send("/api/posts/retry-failed", {}, "POST");
+        toast(`Retrying ${res.count || "all"} failed upload(s) - each will try up to 3 times!`, "ok");
+        if (S.view === "overview") await loadOverview();
+        return tick();
+      } finally { b.disabled = false; }
+    }
     if (a === "ssave") { await saveSettings(); toast("Saved", "ok"); return drawSettings(); }
     if (a === "plansave") {
       const p = {}; $$("#sform [data-plan]").forEach(i => { (p[i.dataset.plan] ??= {})[i.dataset.f] = Number(i.value); });

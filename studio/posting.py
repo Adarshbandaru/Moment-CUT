@@ -218,13 +218,21 @@ def _post(p):
         creators.log(p["creator"], f"Posted to {acc['name']}: {title}")
     except Exception as e:  # noqa: BLE001
         p["tries"] += 1
-        p["error"] = str(e)[-300:]
-        if p["tries"] < 3 and clip and acc:
-            p.update(status="scheduled", due_at=time.time() + 600)  # try again in 10 minutes
+        err_msg = str(e)
+        p["error"] = err_msg[-300:]
+        is_limit = any(x in err_msg.lower() for x in ["uploadlimitexceeded", "exceeded the number of videos", "upload limit"])
+        if is_limit:
+            p.update(status="failed", error="YouTube daily upload limit reached (10 videos/day max for new accounts). Try again tomorrow.")
+            creators.log(p["creator"], f"YouTube daily upload limit reached on {p['account_name']}: {title}")
+            alerts.notify(f"YouTube daily limit reached on {p['account_name']}. Remaining uploads will resume tomorrow.", kind="post")
+        elif p["tries"] < 3 and clip and acc:
+            backoff = 30 * (2 ** (p["tries"] - 1))  # 30s for try 1, 60s for try 2
+            p.update(status="scheduled", due_at=time.time() + backoff)
+            creators.log(p["creator"], f"Upload attempt {p['tries']}/3 failed on {p['account_name']}: retrying in {backoff}s...")
         else:
             p["status"] = "failed"
-            creators.log(p["creator"], f"Post failed on {p['account_name']}: {p['error']}")
-            alerts.notify(f"post failed on {p['account_name']} ({p['title']}): {p['error'][:200]}", kind="post")
+            creators.log(p["creator"], f"Post failed on {p['account_name']} after 3 attempts: {p['error']}")
+            alerts.notify(f"Post failed on {p['account_name']} ({p['title']}) after 3 attempts: {p['error'][:200]}", kind="post")
     _save()
     _mirror(p)
 
@@ -243,10 +251,14 @@ def _run():
             next_p = None
             with _lock:
                 candidates = []
+                now_t = time.time()
                 for p in _posts:
                     if p.get("status") != "scheduled" or not p.get("user"):
                         continue
-                    if ap_on or p.get("due_at", 0) <= time.time():
+                    # Retries must respect backoff delay even when Auto-Pilot is ON
+                    if p.get("tries", 0) > 0 and (p.get("due_at") or 0) > now_t:
+                        continue
+                    if ap_on or (p.get("due_at") or 0) <= now_t:
                         candidates.append(p)
 
                 if not candidates:
@@ -338,6 +350,23 @@ def retry(pid):
         _save()
     _mirror(p)
     _wake_uploader()
+
+
+def retry_all_failed() -> int:
+    """Reset tries and re-schedule all failed or cancelled uploads for the signed-in user."""
+    retried_posts = []
+    with _lock:
+        for p in _mine():
+            if p.get("status") in ("failed", "cancelled"):
+                p.update(status="scheduled", due_at=time.time(), tries=0, error=None)
+                retried_posts.append(p)
+        if retried_posts:
+            _save()
+    for p in retried_posts:
+        _mirror(p)
+    if retried_posts:
+        _wake_uploader()
+    return len(retried_posts)
 
 
 def overview() -> dict:

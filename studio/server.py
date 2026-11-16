@@ -1614,6 +1614,12 @@ def add_posts(body: dict = Body(...)):
     return {"queued": len(made)}
 
 
+@app.post("/api/posts/retry-failed")
+def post_retry_all_failed():
+    n = posting.retry_all_failed()
+    return {"ok": True, "count": n}
+
+
 @app.post("/api/posts/{pid}/{action}")
 def post_action(pid: str, action: str):
     try:

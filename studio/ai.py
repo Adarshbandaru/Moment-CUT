@@ -148,10 +148,13 @@ def public() -> dict:
     its last four characters so the owner can tell which key it is."""
     c = current()
     ks = c.get("keys") or ([c["key"]] if c.get("key") else [])
-    hints = [f"...{k[-4:]}" for k in ks if len(k) >= 4]
+    if len(ks) > 1:
+        hint = ", ".join(f"...{k[-4:]}" for k in ks if len(k) >= 4)
+    else:
+        hint = c["key"][-4:] if len(c["key"]) >= 12 else ""
     return {"provider": c["provider"], "models": c["models"], "base_url": c["base_url"], "has_key": bool(ks),
             "keys_count": len(ks),
-            "key_hint": ", ".join(hints) if hints else (c["key"][-4:] if len(c["key"]) >= 12 else ""),
+            "key_hint": hint,
             "ready": ready(), "label": label(),
             "saved_here": bool(_from_dashboard().get("provider")),
             "providers": [{"id": k, "label": v[0], "address": v[1], "needs_key": k not in NO_KEY, "key_url": v[3], "example": v[4]}
