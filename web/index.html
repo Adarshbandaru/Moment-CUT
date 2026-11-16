@@ -1442,7 +1442,7 @@ function go(v, tab, fromHistory) {
   else if (v === "settings") view.innerHTML = `<div id="sform"></div>`;
   else if (v === "usage") { view.innerHTML = `<div id="usage"></div>`; loadUsage(); }
   else view.innerHTML = `<div id="stream"></div><div id="cbody"></div>`;   // the live player stays put across tabs: no restart, no rebuffer
-  if ($("#add")) drawAdd(v === "overview" ? "hero" : "compact");
+  try { if ($("#add")) drawAdd(v === "overview" ? "hero" : "compact"); } catch (e) { console.error("drawAdd error:", e); }
   if (v === "overview" && window.GradientASCII) { try { window._gaStop = GradientASCII($("#appAscii"), {colors: ["#ffb27a", "#ffffff", "#ffd2ae", "#ffe0c2", "#fff1e6"], shape: "horizon", lightMode: true, cellSize: 16, density: 0.8, glyphOpacity: 0.26, gradientOpacity: 0.32, glow: 0.06, grain: 0.06, mouseInteraction: false, clickEffect: "none"}); } catch {} }
   if (v === "settings") drawSettings();
   if (v.startsWith("c:")) setTab(S.ctab);
@@ -1496,8 +1496,8 @@ function drawAdd(variant) {
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
-      <div class="ob"><div class="ot">Caption style</div>${choice("o_style", Object.entries(S.status.styles).map(([k, v]) => ({v:k, label:v, prev:capPrev(k)})), c?.style ?? "bounce")}</div>
-      <div class="ob"><div class="ot">Layout</div>${choice("o_layout", Object.entries(S.status.layouts).map(([k, v]) => ({v:k, label:LAYOUT_SHORT[k] || v, title:v, prev:`<span class="lay-prev ${esc(k)}"><span class="ph"><i></i></span></span>`})), c?.layout ?? "blur")}</div>
+      <div class="ob"><div class="ot">Caption style</div>${choice("o_style", Object.entries(S.status?.styles || {"bounce":"Yellow bounce","hype":"Red hype","clean":"Clean blue"}).map(([k, v]) => ({v:k, label:v, prev:capPrev(k)})), c?.style ?? "bounce")}</div>
+      <div class="ob"><div class="ot">Layout</div>${choice("o_layout", Object.entries(S.status?.layouts || {"blur":"Blurred fill","zoom":"Zoomed in","crop":"Fill screen"}).map(([k, v]) => ({v:k, label:LAYOUT_SHORT[k] || v, title:v, prev:`<span class="lay-prev ${esc(k)}"><span class="ph"><i></i></span></span>`})), c?.layout ?? "blur")}</div>
       <div class="ob"><div class="ot">Video quality</div><input type="hidden" id="o_quality" value="720"><div class="seg" role="group" aria-label="Video quality">
         <button type="button" data-seg="o_quality" data-v="720" aria-pressed="true">720p<small>Fast</small></button>
         <button type="button" data-seg="o_quality" data-v="1080" aria-pressed="false">1080p<small>Sharper, about 2x slower</small></button></div></div>
@@ -2057,9 +2057,20 @@ function nextSteps(o) {
   return st;
 }
 function drawOverview() {
-  const o = S.overview, box = $("#ov"); if (!o || !box) return;
-  const sum = k => o.creators.reduce((a, r) => a + r[k], 0);
-  const d14 = k => (o.daily || []).reduce((a, d) => a + d[k], 0);
+  const box = $("#ov"); if (!box) return;
+  const o = S.overview || {
+    recording: (S.creators || []).filter(c => c.live_job).length,
+    creators: (S.creators || []).map(c => ({
+      id: c.id, name: c.name, channels: Object.values(c.channels || {}),
+      clips_today: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
+      clips_total: (S.jobs || []).filter(j => j.creator === c.id).reduce((a, j) => a + (j.clips || []).length, 0),
+      posted_today: 0, posted_total: 0, queued: 0, failed: 0, views: 0, earnings: 0, state: c.live_job ? "recording" : "idle"
+    })),
+    daily: [],
+    posts: []
+  };
+  const sum = k => (o.creators || []).reduce((a, r) => a + (r[k] || 0), 0);
+  const d14 = k => (o.daily || []).reduce((a, d) => a + (d[k] || 0), 0);
   const state = r => r.state === "recording" ? `<span class="pill live"><span class="dot"></span>Recording</span>` : r.state === "waiting" ? `<span class="pill warn">Waiting for live</span>` : `<span class="pill">Idle</span>`;
   const pst = p => p.status === "posted" ? `<span class="pill ok">Posted</span>` : p.status === "failed" ? `<span class="pill bad">Failed</span>` : p.status === "posting" ? `<span class="pill warn">Posting now</span>` : `<span class="pill warn">${clock(p.due_at)}</span>`;
   const steps = nextSteps(o);
@@ -2679,6 +2690,10 @@ $("#collapseBtn").innerHTML = ic("sidebar"); $("#menuBtn").innerHTML = ic("menu"
 try { if (localStorage.getItem("mini")) $("#app").classList.add("mini"); } catch {}
 $("#main").addEventListener("scroll", () => $(".topbar").classList.toggle("stuck", $("#main").scrollTop > 4), {passive:true});
 (async () => {
+  const isApp = location.pathname === "/app" || location.pathname.startsWith("/app/");
+  const [initV, initTab] = isApp ? fromPath(location.pathname) : ["overview", "clips"];
+  go(initV, initTab, true);
+  remember(S.view, S.ctab, "replace");
   try { S.status = await api("/api/status"); } catch {}
   const q = new URLSearchParams(location.search);
   if (q.get("connected") || q.get("connect_error")) {
@@ -2688,9 +2703,7 @@ $("#main").addEventListener("scroll", () => $(".topbar").classList.toggle("stuck
   }
   if (q.get("verified")) { history.replaceState(null, "", location.pathname); setTimeout(() => toast("Email confirmed. You're ready to clip.", "ok"), 300); }
   if (q.get("verify_error")) { history.replaceState(null, "", location.pathname); setTimeout(() => toast(q.get("verify_error"), "bad"), 300); }
-  if (location.pathname.startsWith("/app/")) { const [v, tab] = fromPath(location.pathname); S.view = v; S.ctab = tab; }  // the address decides, before anything loads
   await tick();
-  { const [v, tab] = location.pathname.startsWith("/app/") ? fromPath(location.pathname) : ["overview", "clips"]; go(v, tab, true); remember(S.view, S.ctab, "replace"); }
   try {  // a link pasted on the home page before signing up
     const link = sessionStorage.getItem("peakcut_link");
     if (link) { sessionStorage.removeItem("peakcut_link"); go("overview"); $("#url").value = link; onLink($("#url")); $("#url").focus(); toast("Your link is ready. Press Make clips.", "ok"); }

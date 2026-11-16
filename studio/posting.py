@@ -220,7 +220,10 @@ def _post(p):
         p["tries"] += 1
         err_msg = str(e)
         p["error"] = err_msg[-300:]
-        is_limit = any(x in err_msg.lower() for x in ["uploadlimitexceeded", "exceeded the number of videos", "upload limit"])
+        is_limit = any(x in err_msg.lower() for x in [
+            "uploadlimitexceeded", "exceeded the number of videos", "upload limit",
+            "quota exceeded", "video uploads per day", "quota metric"
+        ])
         if is_limit:
             p.update(status="failed", error="YouTube daily upload limit reached (10 videos/day max for new accounts). Try again tomorrow.")
             creators.log(p["creator"], f"YouTube daily upload limit reached on {p['account_name']}: {title}")
