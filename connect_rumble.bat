@@ -1,8 +1,8 @@
 @echo off
-title PeakCut - Connect Rumble
+title Moment-CUT - Connect Rumble
 cd /d "%~dp0"
 echo =======================================================
-echo   PeakCut - Rumble Account Connection Helper
+echo   Moment-CUT - Rumble Account Connection Helper
 echo =======================================================
 echo.
 echo [1] Open browser to log in to Rumble (Edge / Chrome)
@@ -21,7 +21,7 @@ if "%opt%"=="2" (
     set /p uname="Enter your Rumble channel/username: "
     .\.venv\Scripts\python.exe -c "from studio import rumble; res = rumble.save_cookie_session('%cval%', '%uname%'); print('Connected:', res)"
     echo.
-    echo Done! Check your PeakCut settings now.
+    echo Done! Check your Moment-CUT settings now.
     pause
     exit /b
 )
