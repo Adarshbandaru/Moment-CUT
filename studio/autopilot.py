@@ -10,7 +10,7 @@ _lock = threading.Lock()
 _FILE = config.DATA_DIR / "autopilot.json"
 
 DEFAULTS = {
-    "enabled": False,
+    "enabled": True,
     "auto_upload_youtube": True,
     "auto_upload_rumble": True,
     "dynamic_clips": True,        # "clip as many as are perfect"

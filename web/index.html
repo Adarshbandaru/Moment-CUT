@@ -1321,7 +1321,7 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
     uploadBadge = `<span class="prog-pill uploaded" title="All clips uploaded to YouTube">${ic("check")}<b>100%</b> Uploaded</span>`;
   }
 
-  const ap = S.status?.autopilot || {enabled: false};
+  const ap = S.status?.autopilot || {enabled: true};
   const apBtn = `<button type="button" class="ap-toggle sm ${ap.enabled ? "on" : "off"}" data-act="toggleautopilot" title="Click to toggle Auto-Pilot ${ap.enabled ? "OFF (manual mode)" : "ON (auto-upload to YouTube)"}"><i class="dot"></i>${ap.enabled ? "⚡ Auto-Pilot: ON" : "Auto-Pilot: OFF"}</button>`;
 
   let pic = "", subHtml = null, tabs = "";
@@ -1447,7 +1447,7 @@ function drawAdd(variant) {
         ${c ? "" : picker("o_creator", "File under creator", [{v:"", label:"No creator", icon:"user"}, ...S.creators.map(x => ({v:x.id, label:x.name, img:x.profile?.pic && x.profile.channel === x.channel ? avatarUrl(x) : ""}))], S.creators.length === 1 ? S.creators[0].id : "")}
         <button type="button" class="chip" data-act="toggleopts" aria-expanded="false">${ic("sliders")}Options</button>
         ${(() => {
-          const apOn = S.status?.autopilot?.enabled ?? false;
+          const apOn = S.status?.autopilot?.enabled ?? true;
           let h = `<button type="button" class="ap-toggle ${apOn ? "on" : "off"}" data-act="toggleautopilot" title="Toggle Auto-Pilot: ${apOn ? "ON (auto-upload to YouTube)" : "OFF (manual mode, clips saved for review)"}">
             <i class="dot"></i>${apOn ? "⚡ Auto-Pilot: ON" : "Auto-Pilot: OFF"}
           </button>`;
@@ -1467,7 +1467,7 @@ function drawAdd(variant) {
     </div>
     <div class="composer-opts" inert><div class="og">
       <div class="ob wide"><div class="ot">Clips</div><div class="nsteps">
-        ${stepper("o_max", "How many (0 = all)", (S.status?.autopilot?.enabled ?? false) ? 0 : (c?.max_clips ?? 6), 0, 50, 1, "")}
+        ${stepper("o_max", "How many (0 = all)", (S.status?.autopilot?.enabled ?? true) ? 0 : (c?.max_clips ?? 6), 0, 50, 1, "")}
         ${stepper("o_min", "Shortest", c?.min_len ?? 15, 5, 120, 5, "s")}
         ${stepper("o_maxlen", "Longest", c?.max_len ?? 60, 10, 180, 5, "s")}
       </div></div>
@@ -2525,7 +2525,7 @@ document.addEventListener("click", async e => {
     if (a === "updhow") return updateHow();
     if (a === "updlater") { try { localStorage.setItem("peakcut_update_seen", S.status.update?.latest || ""); } catch {} return drawShell(); }
     if (a === "toggleautopilot") {
-      const cur = S.status?.autopilot?.enabled ?? false;
+      const cur = S.status?.autopilot?.enabled ?? true;
       const next = !cur;
       try {
         await send("/api/autopilot", {enabled: next});
