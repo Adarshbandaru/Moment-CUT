@@ -40,6 +40,10 @@ pip install -r requirements.txt
 
 Start the server:
 
+On Windows, double-click **`Moment.bat`** (it starts the server and opens your browser automatically).
+
+Or from the command line:
+
 ```bash
 python -m studio.server
 ```
