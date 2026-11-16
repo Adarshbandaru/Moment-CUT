@@ -549,7 +549,8 @@ def _wait_for_clips(job, futures, began, workers):
             if (t and time.time() - t > CLIP_MINUTES * 60) or (not t and given_up >= workers):
                 given_up += 1
                 clip.update(status="error", error=late)
-                creators.log(job["creator"], f"Clip stopped after {CLIP_MINUTES:g} minutes: {clip.get('title') or clip.get('hook') or clip['id']}")
+                if job.get("creator"):
+                    creators.log(job["creator"], f"Clip stopped after {CLIP_MINUTES:g} minutes: {clip.get('title') or clip.get('hook') or clip['id']}")
                 save(job)
                 continue
             still.append((f, clip))
