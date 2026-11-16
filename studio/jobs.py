@@ -108,7 +108,7 @@ _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 720,
-            "range_start": None, "range_end": None, "watermark": ""}
+            "range_start": None, "range_end": None, "watermark": "@IShowSpeedVerse_IN"}
 
 
 LIMITS = {"max_clips": (0, 50), "min_len": (5, 120), "max_len": (10, 180), "quality": (360, 1080)}
@@ -803,10 +803,10 @@ def _run_job(job):
         model = ai.get("model") or model
         if ai.get("note"):
             notes.append(ai["note"])
-        wm = o.get("watermark") or (creators.get(job.get("creator")) or {}).get("watermark") or (creators.get(job.get("creator")) or {}).get("name") or ""
+        wm = o.get("watermark") or (creators.get(job.get("creator")) or {}).get("watermark") or (creators.get(job.get("creator")) or {}).get("name") or "@IShowSpeedVerse_IN"
         if not wm:
             all_c = creators.all_creators()
-            wm = (all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN") if all_c else "@IShowSpeed_IN"
+            wm = (all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeedVerse_IN") if all_c else "@IShowSpeedVerse_IN"
         for c in found:
             c.update(id=f"clip{len(job['clips']) + 1:02d}", start=round(c["start"] + shift, 2),
                      end=round(c["end"] + shift, 2), style=o["style"], layout=o["layout"],

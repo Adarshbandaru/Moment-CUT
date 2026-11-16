@@ -177,10 +177,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     dur = end - start
     ev = _hook_events(_clean(hook), dur, hook_y)
-    if watermark:
-        wm_text = _clean(watermark)
-        if wm_text:
-            ev.append(f"Dialogue: 0,{_ts(0)},{_ts(dur)},Watermark,,0,0,0,,{{\\an2\\pos(540,1750)\\fad(300,0)\\c&HFFFFFF&\\3c&H000000&\\bord3\\shad1\\fs34}}{wm_text}")
+    wm_to_use = watermark or "@IShowSpeedVerse_IN"
+    wm_text = _clean(wm_to_use)
+    if wm_text:
+        ev.append(f"Dialogue: 0,{_ts(0)},{_ts(dur)},Watermark,,0,0,0,,{{\\an2\\pos(540,1750)\\fad(300,0)\\c&HFFFFFF&\\3c&H000000&\\bord3\\shad1\\fs34}}{wm_text}")
     f = _Font.get(st["font"])
     inside = [dict(w, w=_clean(w["w"])) for w in words if w["s"] >= start - 0.05 and w["s"] < end]
     inside = sorted((w for w in inside if w["w"]), key=lambda w: w["s"])

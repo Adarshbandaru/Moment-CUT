@@ -453,7 +453,7 @@ class Session:
 
     def _add_clip(self, c):
         self.n += 1
-        wm = self.settings.get("watermark") or self.creator.get("watermark") or self.creator.get("name") or ""
+        wm = self.settings.get("watermark") or self.creator.get("watermark") or self.creator.get("name") or "@IShowSpeedVerse_IN"
         c.update(id=f"clip{self.n:03d}", style=self.settings["style"], layout=self.settings["layout"],
                  watermark=wm, status="queued", version=0, made_at=time.time())
         with self.lock:

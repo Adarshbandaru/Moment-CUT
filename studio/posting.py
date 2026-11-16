@@ -129,8 +129,12 @@ def on_clip_ready(job, clip):
 
 
 def _caption(clip, creator):
-    tags = " ".join("#" + h for h in clip.get("hashtags", []))
-    return "\n\n".join(x for x in (clip.get("description", ""), tags, creator.get("post_footer", "")) if x)
+    base_tags = list(clip.get("hashtags", []))
+    if "IShowSpeedVerse_IN" not in base_tags:
+        base_tags.append("IShowSpeedVerse_IN")
+    tags = " ".join("#" + h for h in base_tags)
+    footer = creator.get("post_footer", "") or "Content by @IShowSpeedVerse_IN | #IShowSpeedVerse_IN"
+    return "\n\n".join(x for x in (clip.get("description", ""), tags, footer) if x)
 
 
 def _post(p):
@@ -146,7 +150,9 @@ def _post(p):
         creator = creators.get(job["creator"]) or dict(creators.DEFAULTS, name="clips")
         title, cap = clip.get("title") or clip.get("hook") or "Clip", _caption(clip, creator)
         if acc["platform"] == "youtube":
-            rid, url = accounts.youtube_upload(acc, path, title, cap + "\n\n#Shorts", clip.get("hashtags", []), creator["privacy"])
+            yt_cap = f"{cap}\n\nChannel: @IShowSpeedVerse_IN\n#Shorts #IShowSpeedVerse_IN"
+            yt_tags = list(set(clip.get("hashtags", []) + ["IShowSpeedVerse_IN", "Shorts"]))
+            rid, url = accounts.youtube_upload(acc, path, title, yt_cap, yt_tags, creator["privacy"])
         elif acc["platform"] == "instagram":
             rid, url = accounts.instagram_upload(acc, path, f"{title}\n\n{cap}", job["id"])
         elif acc["platform"] == "tiktok":
