@@ -75,7 +75,24 @@ def enqueue(job, clip, account_ids, now=False) -> list:
         _save()
     for p in made:
         _mirror(p)
+    if now and made:
+        threading.Thread(target=_process_now, args=(ctx.uid(), [p["id"] for p in made]), daemon=True).start()
     return made
+
+
+def _process_now(uid, post_ids):
+    time.sleep(1)
+    try:
+        with ctx.as_user(uid):
+            due = [p for p in list(_posts) if p["id"] in post_ids and p["status"] == "scheduled"]
+            for p in due:
+                with _lock:
+                    if p["status"] != "scheduled":
+                        continue
+                    p["status"] = "posting"
+                _post(p)
+    except Exception:
+        pass
 
 
 def on_clip_ready(job, clip):
@@ -184,7 +201,8 @@ def _run():
         for p in due:
             try:
                 with ctx.as_user(p["user"]):
-                    if accounts.settings()["paused"]:
+                    from . import autopilot
+                    if not autopilot.is_autopilot() and accounts.settings()["paused"]:
                         continue
                     with _lock:
                         if p["status"] != "scheduled":
