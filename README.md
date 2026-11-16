@@ -1,9 +1,9 @@
-# PeakCut
+# Moment-CUT
 
 Turn long videos and live streams into captioned vertical clips, ready to post. Free and open source: run it on
 your own computer or server, with your own AI key.
 
-Paste a YouTube, Twitch or Kick link (or upload a file) and PeakCut finds the moments worth clipping, cuts them to
+Paste a YouTube, Twitch or Kick link (or upload a file) and Moment-CUT finds the moments worth clipping, cuts them to
 9:16, adds word-by-word captions and a hook, and can post them to your connected accounts. It can also record a
 creator's live stream and clip the highlights while the stream is still running.
 

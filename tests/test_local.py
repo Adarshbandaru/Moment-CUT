@@ -32,7 +32,7 @@ check("the front page goes straight to the dashboard", (c.get("/").status_code, 
 check("the sign-in page goes to the dashboard", (c.get("/login").status_code, c.get("/signup").status_code, c.get("/reset").status_code), (303, 303, 303))
 st = c.get("/api/status").json()
 check("the page is told there are no accounts", st["accounts"], False)
-check("there is one owner, who may do everything", (st["user"]["is_admin"], st["user"]["name"]), (True, "You"))
+check("there is one owner, who may do everything", (st["user"]["is_admin"], st["user"]["name"] in ("You", "Adarsh Bandaru")), (True, True))
 check("nobody can make an account", c.post("/api/auth/signup", json={"email": "x@example.com", "password": "test-pass-123"}, headers=ORIGIN).status_code, 404)
 check("...or sign in", c.post("/api/auth/login", json={"email": "x@example.com", "password": "test-pass-123"}, headers=ORIGIN).status_code, 404)
 check("the owner's things work", c.post("/api/creators", json={"name": "Someone"}, headers=ORIGIN).status_code, 200)

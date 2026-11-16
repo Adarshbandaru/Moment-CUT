@@ -248,7 +248,7 @@ def local_user():
         with db.engine.begin() as c:
             u = c.execute(sa.select(db.users).order_by(db.users.c.created_at).limit(1)).first()
             if not u:
-                c.execute(db.users.insert().values(id=LOCAL_ID, email="you@localhost", name="You", is_admin=True, created_at=time.time()))
+                c.execute(db.users.insert().values(id=LOCAL_ID, email="adarsh_bandaru@localhost", name="Adarsh Bandaru", is_admin=True, created_at=time.time()))
             elif not u.is_admin or u.disabled:
                 c.execute(db.users.update().where(db.users.c.id == u.id).values(is_admin=True, disabled=False))
             uid = u.id if u else LOCAL_ID
