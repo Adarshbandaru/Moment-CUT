@@ -342,7 +342,7 @@ class Session:
     def _ai_check(self, window=None, why=None):
         """Judge 1 reads only the words. If it finds a moment, judge 2 reads only the loudness and chat activity
         for the same stretch, without seeing the words. A clip is made when both say yes (or as set in Setup)."""
-        st = self.settings
+        st = creators.get(self.job.get("creator")) or self.settings
         every = int(st.get("ai_every_min", 3)) or 3
         if window:                    # just the stretch around a jump, or around someone saying "clip"
             ws, now = max(0.0, window[0]), window[1]
@@ -391,7 +391,9 @@ class Session:
             rs = max((m["score"] for m in match), default=0)
             verdict["reaction"] = rs
             both = bool(match)
-            ok = both or (st["decide_mode"] == "either" and c["score"] >= 90) or (must and added == 0)
+            is_words = st.get("decide_mode") == "words"
+            is_either = st.get("decide_mode") == "either" and c["score"] >= max(75, st.get("min_score", 65))
+            ok = both or is_words or is_either or (must and added == 0)
             if not ok:
                 self.rejected += 1
                 self._verdict(verdict, "Reaction judge said no, not clipped")
@@ -399,8 +401,7 @@ class Session:
             if any(abs(c["start"] - k["start"]) < st["min_gap_min"] * 60 for k in self.job["clips"]):
                 self._verdict(verdict, "Too close to the last clip")
                 continue
-            why = "Both judges agreed" if both else ("Words judge was very sure" if c["score"] >= 90 and
-                                                     st["decide_mode"] == "either" else "Forced: no clip for a while")
+            why = "Both judges agreed" if both else ("Words judge: news & speech mode" if is_words else ("Words judge was sure" if is_either else "Forced: no clip for a while"))
             c["judges"] = {"words": c["score"], "reaction": rs or None, "why": why}
             c["reason"] = f"{c['reason']} ({why.lower()}.)"
             self._add_clip(c)

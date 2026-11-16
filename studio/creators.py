@@ -70,7 +70,7 @@ def _clean(data: dict) -> dict:
         elif k == "plan":
             v = v if v in ("free", "pro", "max") else "free"
         elif k == "decide_mode":
-            v = v if v in ("both", "either") else "both"
+            v = v if v in ("both", "either", "words") else "both"
         elif k == "privacy":
             v = v if v in ("public", "unlisted", "private") else "public"
         else:
