@@ -34,6 +34,7 @@ NO_KEY = {"ollama", "custom"}       # a model running on your own machine needs 
 # ---------------------------------------------------------------- the settings in use
 _lock = threading.Lock()
 _saved = {"at": None, "data": {}}
+_key_index = 0
 
 
 def _file():
@@ -56,14 +57,64 @@ def _from_dashboard() -> dict:
     return _saved["data"]
 
 
+def keys() -> list:
+    """All configured keys for the active AI provider, preserving pool order."""
+    d = _from_dashboard()
+    p = str(d.get("provider") or config.AI_PROVIDER or "").strip().lower()
+    p = ALIASES.get(p, p)
+    if d.get("provider"):
+        ks = d.get("keys")
+        if isinstance(ks, list) and ks:
+            clean = [str(x).strip() for x in ks if str(x).strip()]
+            if clean:
+                return clean
+        raw = d.get("key")
+    else:
+        raw = config.ai_key()
+    return [k.strip() for k in re.split(r"[\r\n,;]+", str(raw or "")) if k.strip()]
+
+
+def active_key() -> str:
+    """The current active key in the fallback pool."""
+    global _key_index
+    ks = keys()
+    if not ks:
+        return ""
+    with _lock:
+        return ks[_key_index % len(ks)]
+
+
+def shift_key(reason: str = "") -> str:
+    """Auto-shift to the next API key in the pool on rate limit / quota exhaustion."""
+    global _key_index
+    ks = keys()
+    if not ks:
+        return ""
+    with _lock:
+        prev = ks[_key_index % len(ks)]
+        _key_index = (_key_index + 1) % len(ks)
+        nxt = ks[_key_index % len(ks)]
+    try:
+        from . import alerts
+        prev_hint = f"...{prev[-4:]}" if len(prev) >= 4 else "key"
+        nxt_hint = f"...{nxt[-4:]}" if len(nxt) >= 4 else "key"
+        alerts.notify(f"AI key tier/quota limit reached on {prev_hint}. Switched to {nxt_hint} ({reason or 'auto-shift'})", kind="ai")
+    except Exception:
+        pass
+    return nxt
+
+
 def current() -> dict:
     """Provider, models, address and key: what the dashboard saved, or else what .env says."""
     d = _from_dashboard()
     p = str(d.get("provider") or config.AI_PROVIDER or "").strip().lower()
+    ks = keys()
+    curr_k = active_key()
     return {"provider": ALIASES.get(p, p),
             "models": list(d["models"]) if d.get("provider") else list(config.AI_MODELS),
             "base_url": (str(d.get("base_url") or "") if d.get("provider") else config.AI_BASE_URL).rstrip("/"),
-            "key": str(d["key"]) if d.get("provider") and "key" in d else config.ai_key()}
+            "key": curr_k,
+            "keys": ks}
 
 
 def provider() -> str:
@@ -75,7 +126,7 @@ def models() -> list:
 
 
 def key() -> str:
-    return current()["key"]
+    return active_key()
 
 
 def label() -> str:
@@ -96,8 +147,12 @@ def public() -> dict:
     """What the settings page may see. The key itself never leaves the server: only whether there is one, and
     its last four characters so the owner can tell which key it is."""
     c = current()
-    return {"provider": c["provider"], "models": c["models"], "base_url": c["base_url"], "has_key": bool(c["key"]),
-            "key_hint": c["key"][-4:] if len(c["key"]) >= 12 else "", "ready": ready(), "label": label(),
+    ks = c.get("keys") or ([c["key"]] if c.get("key") else [])
+    hints = [f"...{k[-4:]}" for k in ks if len(k) >= 4]
+    return {"provider": c["provider"], "models": c["models"], "base_url": c["base_url"], "has_key": bool(ks),
+            "keys_count": len(ks),
+            "key_hint": ", ".join(hints) if hints else (c["key"][-4:] if len(c["key"]) >= 12 else ""),
+            "ready": ready(), "label": label(),
             "saved_here": bool(_from_dashboard().get("provider")),
             "providers": [{"id": k, "label": v[0], "address": v[1], "needs_key": k not in NO_KEY, "key_url": v[3], "example": v[4]}
                           for k, v in PROVIDERS.items()]}
@@ -122,18 +177,34 @@ def save(provider_id: str, model_ids, address: str = "", new_key=None) -> dict:
     if p == "custom" and not address:
         raise ValueError("A custom service needs its address, for example http://127.0.0.1:1234/v1")
     old = current()
-    k = old["key"] if new_key is None and old["provider"] == p else str(new_key or "").strip()[:400]
-    if not k and p not in NO_KEY:
+    if new_key is None and old["provider"] == p:
+        saved_keys = old.get("keys") or ([old["key"]] if old.get("key") else [])
+    else:
+        raw_key = str(new_key or "").strip()[:4000]
+        saved_keys = [k.strip() for k in re.split(r"[\r\n,;]+", raw_key) if k.strip()]
+
+    primary_k = saved_keys[0] if saved_keys else ""
+    if not saved_keys and p not in NO_KEY:
         raise ValueError("Paste the key for this service.")
     with _lock:
         f = _file()
         tmp = f.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"provider": p, "models": ms, "base_url": address, "key": k}), encoding="utf-8")
-        try:
-            os.chmod(tmp, 0o600)        # the key is only for whoever runs the server
-        except OSError:
-            pass
-        tmp.replace(f)
+        payload = json.dumps({"provider": p, "models": ms, "base_url": address, "key": primary_k, "keys": saved_keys})
+        for attempt in range(20):
+            try:
+                tmp.write_text(payload, encoding="utf-8")
+                try:
+                    os.chmod(tmp, 0o600)        # the key is only for whoever runs the server
+                except OSError:
+                    pass
+                tmp.replace(f)
+                break
+            except OSError:
+                if attempt == 19:
+                    f.write_text(payload, encoding="utf-8")
+                else:
+                    import time
+                    time.sleep(0.05)
         _saved["at"] = None
     return public()
 
@@ -144,7 +215,11 @@ def list_models(provider_id=None, address=None, with_key=None) -> list:
     p = ALIASES.get(str(provider_id or c["provider"]).lower(), str(provider_id or c["provider"]).lower())
     if p not in PROVIDERS:
         raise ValueError("Choose one of the AI services in the list.")
-    k = str(with_key or "").strip() or (c["key"] if c["provider"] == p else "")
+    if with_key:
+        parsed_keys = [k.strip() for k in re.split(r"[\r\n,;]+", str(with_key)) if k.strip()]
+        k = parsed_keys[0] if parsed_keys else ""
+    else:
+        k = (c["key"] if c["provider"] == p else "")
     base = str(address or "").strip().rstrip("/") or (c["base_url"] if c["provider"] == p else "") or PROVIDERS[p][1]
     if not base:
         raise ValueError("Enter the service's address first.")
@@ -172,7 +247,11 @@ def test() -> dict:
     if not ready():
         raise ValueError("Save a service, a model and a key first.")
     out, sent, wrote = call(ms[0], 'Answer with a JSON array that holds the single string "ok".', {"type": "ARRAY", "items": {"type": "STRING"}})
-    return {"ok": True, "model": ms[0], "tokens": sent + wrote, "answer": str(out)[:80]}
+    ks = keys()
+    curr_k = active_key()
+    hint = f"...{curr_k[-4:]}" if len(curr_k) >= 4 else "active"
+    pool_info = f" ({len(ks)} keys in fallback pool)" if len(ks) > 1 else ""
+    return {"ok": True, "model": ms[0], "tokens": sent + wrote, "answer": str(out)[:80], "active_key": hint, "keys_count": len(ks), "pool_info": pool_info}
 
 
 class AIError(RuntimeError):
@@ -190,8 +269,8 @@ def explain(e) -> str:
         return f"{label()} doesn't know the model \"{name}\". Open Settings, AI, press Find models and pick one from the list."
     if "401" in text or "403" in text or "api key" in low or "api_key" in low or "unauthorized" in low or "permission" in low:
         return f"{label()} refused the key. Paste a working key under Settings, AI."
-    if "429" in text or "quota" in low or "rate limit" in low or "exhausted" in low:
-        return f"{label()} says the key has hit its limit or has no credit left. Check the account with {label()}, or try again later."
+    if "429" in text or "quota" in low or "rate limit" in low or "exhausted" in low or "resource_exhausted" in low:
+        return f"{label()} says the key has hit its limit or has no credit left. Check the account with {label()}, or add fallback keys in Settings, AI."
     if "connect" in low or "timed out" in low or "timeout" in low or "getaddrinfo" in low or "refused" in low:
         return f"PeakCut couldn't reach {label()}. Check the internet connection" + (" and that Ollama is running." if provider() == "ollama" else ".")
     return ""
@@ -208,8 +287,9 @@ def clear_problem():
     problem.update(text="", at=0.0)
 
 
-def _fail(r, model):
-    text = r.text[:300].replace(key() or "\0", "<key>")
+def _fail(r, model, k=None):
+    hide = k or key() or "\0"
+    text = r.text[:300].replace(hide, "<key>")
     raise AIError(f"HTTP {r.status_code} {text}")
 
 
@@ -246,17 +326,46 @@ def _parse(text):
 
 # ---------------------------------------------------------------- one call
 def call(model: str, prompt: str, schema: dict):
-    """Ask one model. Returns (the parsed JSON answer, tokens sent, tokens written back)."""
-    how = PROVIDERS[provider()][2]
-    return {"gemini": _gemini, "openai": _openai, "anthropic": _anthropic}[how](model, prompt, schema)
+    """Ask one model. Returns (the parsed JSON answer, tokens sent, tokens written back).
+    Automatically fails over across multiple configured API keys if a key hits rate limit or quota."""
+    all_k = keys()
+    max_tries = max(1, len(all_k))
+    last_err = None
+
+    for attempt in range(max_tries):
+        k = active_key()
+        how = PROVIDERS[provider()][2]
+        fn = {"gemini": _gemini, "openai": _openai, "anthropic": _anthropic}[how]
+        try:
+            return fn(model, prompt, schema, k=k)
+        except AIError as e:
+            last_err = e
+            err_text = str(e).lower()
+            is_quota = any(w in err_text for w in [
+                "429", "resource_exhausted", "quota", "rate limit", "ratelimit",
+                "tier", "limit exceeded", "exceeded your current quota", "overloaded",
+                "credit", "insufficient_quota", "usage limit"
+            ])
+            if is_quota and len(all_k) > 1 and attempt < max_tries - 1:
+                shift_key(reason=f"Quota exceeded ({model})")
+                import time
+                time.sleep(0.5)
+                continue
+            raise
+        except Exception as e:
+            last_err = e
+            raise
+    if last_err:
+        raise last_err
 
 
-def _gemini(model, prompt, schema):
+def _gemini(model, prompt, schema, k=None):
+    use_k = k or active_key()
     body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {"temperature": 0.4, "responseMimeType": "application/json", "responseSchema": schema}}
-    r = httpx.post(f"{base_url()}/{model}:generateContent", json=body, headers={"x-goog-api-key": key()}, timeout=120)
+    r = httpx.post(f"{base_url()}/{model}:generateContent", json=body, headers={"x-goog-api-key": use_k}, timeout=120)
     if r.status_code != 200:
-        _fail(r, model)
+        _fail(r, model, k=use_k)
     data = r.json()
     text = "".join(p.get("text", "") for p in data["candidates"][0]["content"]["parts"])
     u = data.get("usageMetadata", {})
@@ -264,8 +373,9 @@ def _gemini(model, prompt, schema):
     return json.loads(text), sent, max(0, int(u.get("totalTokenCount") or 0) - sent)   # the answer, and any thinking billed with it
 
 
-def _openai(model, prompt, schema):
-    headers = {"Authorization": f"Bearer {key()}"} if key() else {}
+def _openai(model, prompt, schema, k=None):
+    use_k = k or active_key()
+    headers = {"Authorization": f"Bearer {use_k}"} if use_k else {}
     body = {"model": model, "messages": [{"role": "user", "content": _wrapped(prompt, schema)}]}
     # Most services accept these two extras; a few models refuse one of them, so they are dropped on a refusal.
     extras = [{"temperature": 0.4, "response_format": {"type": "json_object"}}, {"response_format": {"type": "json_object"}}, {}]
@@ -275,18 +385,19 @@ def _openai(model, prompt, schema):
         if r.status_code not in (400, 422):
             break
     if r.status_code != 200:
-        _fail(r, model)
+        _fail(r, model, k=use_k)
     data = r.json()
     u = data.get("usage") or {}
     return _parse(data["choices"][0]["message"].get("content")), int(u.get("prompt_tokens") or 0), int(u.get("completion_tokens") or 0)
 
 
-def _anthropic(model, prompt, schema):
+def _anthropic(model, prompt, schema, k=None):
+    use_k = k or active_key()
     body = {"model": model, "max_tokens": 8192, "messages": [{"role": "user", "content": _wrapped(prompt, schema)}]}
     r = httpx.post(f"{base_url()}/messages", json=body, timeout=180,
-                   headers={"x-api-key": key(), "anthropic-version": "2023-06-01"})
+                   headers={"x-api-key": use_k, "anthropic-version": "2023-06-01"})
     if r.status_code != 200:
-        _fail(r, model)
+        _fail(r, model, k=use_k)
     data = r.json()
     text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
     u = data.get("usage") or {}
