@@ -18,6 +18,14 @@ STYLES = {
              "strong": "00D7FF", "outline": 7, "pop": 114, "upper": True, "per": 2},
     "clean": {"label": "Clean", "font": "Poppins ExtraBold", "size": 100, "base": "FFFFFF", "active": "6BD7FF",
               "strong": "FFFFFF", "outline": 5, "pop": 106, "upper": False, "per": 4},
+    "hormozi": {"label": "Hormozi Gold", "font": "Poppins ExtraBold", "size": 136, "base": "00FFFF", "active": "14FF39",
+                "strong": "00FFFF", "outline": 8, "pop": 116, "upper": True, "per": 2},
+    "neon": {"label": "Neon Green", "font": "Anton", "size": 148, "base": "FFFFFF", "active": "14FF39",
+             "strong": "14FF39", "outline": 8, "pop": 115, "upper": True, "per": 2},
+    "drama": {"label": "Drama Red", "font": "Anton", "size": 150, "base": "FFFFFF", "active": "3838FF",
+              "strong": "3838FF", "outline": 8, "pop": 116, "upper": True, "per": 2},
+    "cyan": {"label": "Vibrant Teal", "font": "Poppins ExtraBold", "size": 132, "base": "FFFFFF", "active": "A4BC1A",
+             "strong": "A4BC1A", "outline": 7, "pop": 112, "upper": True, "per": 3},
 }
 HOOK = {"font": "Poppins ExtraBold", "size": 96, "ink": "14100E", "box": "FFFFFF", "pad_x": 36, "pad_y": 22, "radius": 26,
         "max_w": 900}
