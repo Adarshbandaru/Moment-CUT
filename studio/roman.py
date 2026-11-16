@@ -1,8 +1,9 @@
-"""Hindi and Urdu in Roman letters ("Hinglish"), for captions: चूना जो उसको -> chuna jo usko, یار کیا ہے -> yaar kya hai.
+"""Hindi, Urdu, and Telugu in Roman letters ("Hinglish" / "Tenglish"), for captions:
+चूना जो उसको -> chuna jo usko, یار کیا ہے -> yaar kya hai, ఎలా ఉన్నారు బ్రో -> ela unnaru bro.
 
 Not a translation: the same word, spelled the way people type it in chats. The AI does this when it tidies a
 clip's captions (brain.fix_caption_words); this is the fallback for when there is no AI, or it missed a word, so
-that a caption is never drawn in Hindi or Urdu script. Urdu is written without most vowels, so common words come
+that a caption is never drawn in Hindi, Urdu, or Telugu script. Urdu is written without most vowels, so common words come
 from a list and the rest are spelled from their letters: readable, if not always how a person would type it."""
 import re
 
@@ -24,21 +25,29 @@ _WORDS = {"में": "mein", "मैं": "main", "हैं": "hain", "है
           "हूं": "hoon", "क्या": "kya", "क्यों": "kyun", "क्यूँ": "kyun", "यह": "yeh", "वह": "woh", "और": "aur",
           "भी": "bhi", "ही": "hi", "की": "ki", "जी": "ji", "तो": "to", "हाँ": "haan", "हां": "haan", "यहाँ": "yahan",
           "यहां": "yahan", "वहाँ": "wahan", "वहां": "wahan", "कहाँ": "kahan", "कहां": "kahan", "थी": "thi",
-          "रही": "rahi", "कभी": "kabhi", "अभी": "abhi", "सभी": "sabhi", "भाई": "bhai", "मुझे": "mujhe",
-          "तुम": "tum", "हम": "hum", "आप": "aap", "बहुत": "bahut", "अच्छा": "accha", "ठीक": "theek", "लिए": "liye"}
+          "रही": "rahi", "कभी": "kabhi", "अभी": "abhi", "सभी": "sabhi", "भाई": "bhai", "भैया": "bhaiyya", "मुझे": "mujhe",
+          "तुम": "tum", "हम": "hum", "आप": "aap", "बहुत": "bahut", "अच्छा": "accha", "ठीक": "theek", "लिए": "liye",
+          "अरेरे": "arere", "यार": "yaar", "खतरनाक": "khatarnak", "बिल्कुल": "bilkul", "पागल": "pagal",
+          "देख": "dekh", "देखो": "dekho", "सुन": "sun", "सुनो": "suno", "चल": "chal", "चलो": "chalo", "रुको": "ruko",
+          "खत्म": "khatam", "गजब": "gajab", "सच": "sach", "मजा": "maza", "मजे": "maze", "ओपी": "OP", "वाह": "wah"}
 DEVANAGARI = re.compile(r"[ऀ-ॿ]")
 OTHER_SCRIPT = re.compile(r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")   # Urdu / Arabic letters
+TELUGU = re.compile(r"[\u0C00-\u0C7F]")        # Telugu script
 
 
 def has_hindi(text: str) -> bool:
     return bool(DEVANAGARI.search(text or ""))
 
 
+def has_telugu(text: str) -> bool:
+    return bool(TELUGU.search(text or ""))
+
+
 def needs_roman(text: str) -> bool:
-    """Is this in a script that captions should show in Roman letters instead (Hindi, Urdu, Arabic, Russian-style,
+    """Is this in a script that captions should show in Roman letters instead (Hindi, Urdu, Telugu, Arabic, Russian-style,
     Greek or Korean letters)?"""
     text = text or ""
-    return bool(DEVANAGARI.search(text) or OTHER_SCRIPT.search(text) or MORE_SCRIPTS.search(text))
+    return bool(DEVANAGARI.search(text) or OTHER_SCRIPT.search(text) or TELUGU.search(text) or MORE_SCRIPTS.search(text))
 
 
 def drawable(text: str) -> bool:
@@ -233,18 +242,101 @@ def _urdu_word(w: str) -> str:
     return s
 
 
+# ---------------------------------------------------------------- Telugu ("Tenglish")
+_TE_WORDS = {
+    "ఎలా": "ela", "ఎలాగ": "elaaga", "ఉన్నారు": "unnaru", "ఉన్నావు": "unnavu", "ఉంది": "undi", "ఉన్నాడు": "unnadu",
+    "ఉన్నారులే": "unnarule", "ఏంటి": "enti", "ఏమిటి": "emiti", "ఏం": "em", "ఎందుకు": "enduku", "ఎక్కడ": "ekkada",
+    "ఎప్పుడు": "eppudu", "ఎవరు": "evaru", "కదా": "kada", "కదా!": "kadaa!", "బ్రో": "bro", "అన్న": "anna", "అన్నా": "annaa",
+    "తమ్ముడు": "tammudu", "బాగుంది": "bagundi", "బాగున్నారా": "bagunnara", "బాగున్నాను": "bagunnanu",
+    "అసలు": "asalu", "చూడు": "choodu", "చూడండి": "choodandi", "అవును": "avunu", "కాదు": "kaadu", "వద్దు": "vaddu",
+    "చేయి": "cheyi", "చేయండి": "cheyandi", "చెప్పు": "cheppu", "చెప్పండి": "cheppandi", "పో": "po", "వెళ్ళు": "vellu",
+    "రా": "raa", "రండి": "randi", "ఇది": "idhi", "అది": "adhi", "వాడు": "vaadu", "వీడు": "veedu", "ఆమె": "aame",
+    "నేను": "nenu", "నువ్వు": "nuvvu", "మీరు": "meeru", "మనం": "manam", "చాలా": "chala", "కొంచెం": "konchem",
+    "అయ్యో": "ayyo", "అరెరే": "arere", "సూపర్": "super", "ఖతర్నాక్": "khatarnak", "చూశారా": "choosara", "తెలుసా": "telusa",
+    "తెలుగు": "telugu", "సినిమా": "cinema", "పాట": "paata", "మాట": "maata", "డబ్బులు": "dabbulu", "డబ్బు": "dabbu"
+}
+_TE_VOWELS = {
+    "అ": "a", "ఆ": "aa", "ఇ": "i", "ఈ": "ee", "ఉ": "u", "ఊ": "oo", "ఋ": "ri",
+    "ఎ": "e", "ఏ": "ee", "ఐ": "ai", "ఒ": "o", "ఓ": "oo", "ఔ": "au"
+}
+_TE_SIGNS = {
+    "ా": "aa", "ి": "i", "ీ": "ee", "ు": "u", "ూ": "oo", "ృ": "ri", "ౄ": "ri",
+    "ె": "e", "ే": "ee", "ై": "ai", "ొ": "o", "ో": "oo", "ౌ": "au"
+}
+_TE_CONS = {
+    "క": "k", "ఖ": "kh", "గ": "g", "ఘ": "gh", "ఙ": "ng",
+    "చ": "ch", "ఛ": "chh", "జ": "j", "ఝ": "jh", "ఞ": "ny",
+    "ట": "t", "ఠ": "th", "డ": "d", "ఢ": "dh", "ణ": "n",
+    "త": "t", "థ": "th", "ద": "d", "ధ": "dh", "న": "n",
+    "ప": "p", "ఫ": "ph", "బ": "b", "భ": "bh", "మ": "m",
+    "య": "y", "ర": "r", "ఱ": "r", "ల": "l", "ళ": "l", "వ": "v",
+    "శ": "sh", "ష": "sh", "స": "s", "హ": "h"
+}
+_TE_VIRAMA = "్"
+_TE_ANUSVARA = "ం"
+_TE_VISARGA = "ః"
+_TE_OTHER = {**{chr(0x0C66 + i): str(i) for i in range(10)}}
+
+
+def _telugu_word(w: str) -> str:
+    if w in _TE_WORDS:
+        return _TE_WORDS[w]
+    units, i = [], 0
+    while i < len(w):
+        ch = w[i]
+        nxt = w[i + 1] if i + 1 < len(w) else ""
+        if ch in _TE_CONS:
+            c = _TE_CONS[ch]
+            if nxt == _TE_VIRAMA:
+                units.append([c, None, True])
+                i += 2
+                continue
+            if nxt in _TE_SIGNS:
+                units.append([c, _TE_SIGNS[nxt], True])
+                i += 2
+                continue
+            units.append([c, "a", True])
+        elif ch in _TE_VOWELS:
+            units.append(["", _TE_VOWELS[ch], False])
+        elif ch == _TE_ANUSVARA:
+            if units:
+                units[-1][1] = (units[-1][1] or "") + ("m" if nxt in "పఫబభమ" or i == len(w) - 1 else "n")
+            else:
+                units.append(["n", None, False])
+        elif ch == _TE_VISARGA:
+            if units:
+                units[-1][1] = (units[-1][1] or "") + "h"
+        elif ch in _TE_OTHER:
+            units.append([_TE_OTHER[ch], None, False])
+        elif ch == _TE_VIRAMA:
+            pass
+        else:
+            units.append([ch, None, False])
+        i += 1
+
+    short_vowels = {"aa": "a", "ee": "e", "oo": "o"}
+    for k, u in enumerate(units):
+        if u[1] in short_vowels and k == len(units) - 1 and len(units) > 1:
+            u[1] = short_vowels[u[1]]
+
+    return "".join(u[0] + (u[1] or "") for u in units)
+
+
 _HINDI_RUN = r"[ऀ-ॿ]+"
 _URDU_RUN = r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]+"
+_TELUGU_RUN = r"[\u0C00-\u0C7F]+"
 
 
 def to_roman(text: str) -> str:
-    """Every Hindi and Urdu word in the text spelled in Roman letters. Anything else is left exactly as it is."""
+    """Every Hindi, Urdu, and Telugu word in the text spelled in Roman letters. Anything else is left exactly as it is."""
     text = text or ""
     if DEVANAGARI.search(text):
         text = re.sub(_HINDI_RUN, lambda m: _word(m.group(0)), text)
     if OTHER_SCRIPT.search(text):
         text = text.replace("،", ",").replace("؟", "?").replace("۔", ".")
         text = re.sub(_URDU_RUN, lambda m: _urdu_word(m.group(0)), text)
+    if TELUGU.search(text):
+        text = re.sub(_TELUGU_RUN, lambda m: _telugu_word(m.group(0)), text)
     if MORE_SCRIPTS.search(text):
         import unicodedata
         text = "".join(unicodedata.normalize("NFD", ch) if "\u0370" <= ch <= "\u04FF" or "\u1F00" <= ch <= "\u1FFF" else ch for ch in text)
@@ -259,5 +351,5 @@ def unicodedata_nfc(s: str) -> str:
 
 
 def words(ws: list) -> list:
-    """Caption words ({'w', 's', 'e'}) with any Hindi or Urdu in Roman letters. Timings are untouched."""
+    """Caption words ({'w', 's', 'e'}) with any Hindi, Urdu, or Telugu in Roman letters. Timings are untouched."""
     return [dict(w, w=to_roman(w["w"])) if needs_roman(w.get("w", "")) else w for w in ws]

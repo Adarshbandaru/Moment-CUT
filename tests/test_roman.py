@@ -15,7 +15,8 @@ def text(words):
 # ---- the spelling rules on their own
 for hi, want in [("चूना जो उसको", "chuna jo usko"), ("कहना करता समझना", "kahna karta samajhna"), ("आज", "aaj"),
                  ("ज़िंदगी", "zindagi"), ("नहीं यार", "nahi yaar"), ("बात", "baat"), ("हमारा", "hamara"),
-                 ("GTA गेम में 1000", "GTA gem mein 1000")]:
+                 ("GTA गेम में 1000", "GTA gem mein 1000"),
+                 ("ఎలా ఉన్నారు బ్రో", "ela unnaru bro"), ("బాగుంది చాలా", "bagundi chala"), ("ఏంటి బ్రో ఇది", "enti bro idhi")]:
     check(f"{hi} -> {want}", roman.to_roman(hi) == want, roman.to_roman(hi))
 check("English is left alone", roman.to_roman("Hello there, 25 cars!") == "Hello there, 25 cars!")
 
@@ -57,9 +58,9 @@ check("an answer of the wrong length keeps the words, in Roman letters", text(br
 c = brain._tidy({"hook": "चूना लगा", "title": "उसको चूना", "highlight_words": ["चूना", "boss"], "score": 90}, 1, 20)
 check("hook, title and highlighted words are in Roman letters", (c["hook"], c["title"], c["highlight_words"]) == ("CHUNA LAGA", "usko chuna", ["chuna", "boss"]), str(c))
 
-# ---- the language rule: English stays, Hindi/Urdu in Roman letters, everything else translated into English
-check("which languages are translated", [brain.needs_translation(x) for x in ("en", "en-US", "hi", "ur", "es", "ar", "")]
-      == [False, False, False, False, True, True, False])
+# ---- the language rule: English stays, Hindi/Urdu/Telugu in Roman letters, everything else translated into English
+check("which languages are translated", [brain.needs_translation(x) for x in ("en", "en-US", "hi", "ur", "te", "tel", "es", "ar", "")]
+      == [False, False, False, False, False, False, True, True, False])
 def by_purpose(prompt, schema=None, purpose=""):
     if purpose == "Caption translation":
         n = int(prompt.split("Lines (")[1].split(")")[0])
@@ -81,6 +82,8 @@ out = brain.english_captions(ar, "ar", "", youtube_english=lambda: None)
 check("Arabic with neither: still in English letters", not any(roman.needs_roman(w["w"]) for w in out) and len(out) == 5, text(out))
 out = brain.english_captions(ws("जो उसको"), "hi", "")
 check("Hindi is never translated, only spelled in Roman letters", text(out) == "jo usko", text(out))
+out = brain.english_captions(ws("ఎలా ఉన్నారు బ్రో"), "te", "")
+check("Telugu is never translated, only spelled in Roman letters", text(out) == "ela unnaru bro", text(out))
 brain.ask_ai = by_purpose
 answers["now"] = ["Hello", "there", "friend."]
 check("English stays English", text(brain.english_captions(ws("hello there friend"), "en", "")) == "Hello there friend.")
