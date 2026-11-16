@@ -6,7 +6,7 @@ from pathlib import Path
 
 from . import config, ctx
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _FILE = config.DATA_DIR / "autopilot.json"
 
 DEFAULTS = {
