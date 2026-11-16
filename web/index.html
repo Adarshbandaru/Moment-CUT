@@ -1245,8 +1245,14 @@ function moveInd() {
 }
 function drawShell() {  const nav = (v, icon, label, extra = "") => `<button class="nav-item ${S.view === v ? "on" : ""}" data-act="go" data-v="${esc(v)}" title="${esc(label)}">${icon}<span class="label">${esc(label)}</span>${extra}</button>`;
   put($("#nav"), nav("overview", navIc("home", "overview"), "Home") +
-    nav("library", navIc("film", "library"), "All videos", (() => { const w = S.jobs.filter(j => ["queued", "running"].includes(j.status)).length;
-      return w ? `<span class="working" title="${w} working now"><i></i>${w} working</span>` : S.jobs.length ? `<span class="count">${S.jobs.length}</span>` : ""; })()) +
+    nav("library", navIc("film", "library"), "All videos", (() => {
+      const w = S.jobs.filter(j => ["queued", "running"].includes(j.status));
+      if (w.length) {
+        const prog = Math.min(99, Math.max(1, Math.round(w.reduce((acc, j) => acc + (j.progress || 0), 0) / w.length * 100)));
+        return `<span class="working" title="${w.length} working now (${prog}%)"><i></i>${prog}%</span>`;
+      }
+      return S.jobs.length ? `<span class="count">${S.jobs.length}</span>` : "";
+    })()) +
     `<h4><span>Creators</span></h4>` +
     S.creators.map(c => nav("c:" + c.id, cav(c), c.name,
       c.live_job ? `<span class="sb-tag rec" title="Recording now"><i></i>Rec</span>`
@@ -1267,6 +1273,32 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
   if (S.view === "overview") sub = `${greeting()}. ${S.creators.length} creator${S.creators.length === 1 ? "" : "s"}${recording ? `, ${recording} recording now` : ""}.`;
   if (S.view === "library") sub = "Every video and recording, across all creators.";
   if (S.view === "settings") sub = (S.status.accounts === false ? "Your AI key and connected apps." : "Your profile, security and connected apps.");
+  const allClips = (S.jobs || []).flatMap(j => j.clips || []);
+  const allPosts = allClips.flatMap(c => Object.values(c.posts || {}));
+  const postedCount = allPosts.filter(p => p.status === "posted").length;
+  const inFlightCount = allPosts.filter(p => p.status === "scheduled" || p.status === "posting").length;
+  const totalPosts = postedCount + inFlightCount;
+  const postPct = totalPosts > 0 ? Math.round((postedCount / totalPosts) * 100) : (allClips.length > 0 ? 100 : null);
+
+  const workingJobs = (S.jobs || []).filter(j => ["queued", "running"].includes(j.status));
+  let jobPct = null;
+  if (workingJobs.length > 0) {
+    const totalProg = workingJobs.reduce((acc, j) => acc + (j.progress || 0), 0);
+    jobPct = Math.min(99, Math.max(1, Math.round((totalProg / workingJobs.length) * 100)));
+  }
+
+  let uploadBadge = "";
+  if (workingJobs.length > 0) {
+    uploadBadge = `<span class="chip" style="background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand);font-weight:600" title="${workingJobs.length} video(s) processing">${ic("scissors")}Clipping: ${jobPct}%</span>`;
+  } else if (totalPosts > 0) {
+    uploadBadge = `<span class="chip" style="background:${postPct === 100 ? "#e6f9ed" : "var(--brand-soft)"};color:${postPct === 100 ? "#137333" : "var(--brand-ink)"};border:1px solid ${postPct === 100 ? "#34a853" : "var(--brand)"};font-weight:600" title="${postedCount} of ${totalPosts} clips uploaded to YouTube / Rumble">${ic("up")}${postPct}% Uploaded (${postedCount}/${totalPosts})</span>`;
+  } else if (allClips.length > 0) {
+    uploadBadge = `<span class="chip" style="color:var(--c-ok);border:1px solid var(--c-ok);font-weight:600" title="All clips processed">${ic("check")}100% Uploaded</span>`;
+  }
+
+  const ap = S.status?.autopilot || {enabled: true};
+  const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to switch between Auto-Pilot and Manual mode">${ap.enabled ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>`;
+
   let pic = "", subHtml = null, tabs = "";
   if (c) {
     title = c.name;
@@ -1275,14 +1307,13 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
     const nJobs = S.jobs.filter(j => j.creator === c.id).length, nLog = (c.log || []).length;
     tabs = [["clips", "Clips", "scissors", nJobs], ["setup", "Setup", "cog", 0], ["activity", "Activity", "clock", nLog]].map(([k, l, i, n]) =>
       `<button class="tabbtn ${S.ctab === k ? "on" : ""}" data-act="tab" data-t="${k}" role="tab" aria-selected="${S.ctab === k}">${ic(i)}${l}${n ? `<span class="n">${n > 99 ? "99+" : n}</span>` : ""}</button>`).join("");
-    act = c.live_job ? `<button class="btn danger" data-act="stoplive" data-j="${esc(c.live_job)}">${ic("stop")}Stop recording</button>`
-                     : `<button class="btn primary" data-act="golive"><span class="rdot"></span>${liveOn(c).length ? "Record live stream" : "Start recording"}</button>`;
+    const liveBtn = c.live_job ? `<button class="btn danger" data-act="stoplive" data-j="${esc(c.live_job)}">${ic("stop")}Stop recording</button>`
+                               : `<button class="btn primary" data-act="golive"><span class="rdot"></span>${liveOn(c).length ? "Record live stream" : "Start recording"}</button>`;
+    act = uploadBadge + " " + apBtn + " " + liveBtn;
   }
   if (S.view === "overview" || S.view === "library") {
-    const ap = S.status?.autopilot || {enabled: true};
-    const apBtn = `<button class="btn sm" data-act="toggleautopilot" style="${ap.enabled ? "background:var(--brand-soft);color:var(--brand-ink);border:1px solid var(--brand)" : ""}" title="Click to switch between Auto-Pilot and Manual mode">${ap.enabled ? "⚡ Auto-Pilot: ON" : "✋ Mode: Manual"}</button>`;
     const L = S.status.links || {};
-    act = apBtn
+    act = uploadBadge + " " + apBtn
         + (L.repo ? `<a class="btn" href="${esc(L.repo)}" target="_blank" rel="noopener" title="Star PeakCut on GitHub">${ic("github")}<span>Star<span class="long"> on GitHub</span></span></a>` : "")
         + (L.follow ? `<a class="btn primary" href="${esc(L.follow)}" target="_blank" rel="noopener" title="Follow the maker of PeakCut on Instagram">${ic("instagram")}Follow me</a>` : "");
   }
@@ -1296,7 +1327,30 @@ function drawShell() {  const nav = (v, icon, label, extra = "") => `<button cla
   const toolBar = S.status.no_ffmpeg ? `<div class="vb" role="alert">${ic("warn")}<span><b>PeakCut can't make clips yet: ffmpeg isn't installed on this computer.</b> Open a terminal, run <code>winget install Gyan.FFmpeg</code> (Mac: <code>brew install ffmpeg</code>, Linux: <code>sudo apt install ffmpeg</code>), then close PeakCut and start it again.</span></div>` : "";
   const aiBar = !toolBar && S.status.ai?.problem && me?.is_admin && S.view !== "settings" ? `<div class="vb" role="status">${ic("warn")}<span><b>The AI isn't answering.</b> ${esc(S.status.ai.problem)} Until then, clips are picked by loudness.</span><button class="btn sm primary" data-act="go" data-v="settings" data-tab="ai">Open AI settings</button></div>` : "";
   const diskBar = !toolBar && S.status.disk_full && S.view !== "settings" ? `<div class="vb" role="alert">${ic("warn")}<span><b>The drive PeakCut saves to is almost full, so it can't take new videos.</b> Free up space on it, or move PeakCut's folder to a bigger drive.</span>${me?.is_admin ? `<button class="btn sm primary" data-act="go" data-v="settings" data-tab="storage">Open Storage</button>` : ""}</div>` : "";
-  put($("#vbanner"), toolBar ? toolBar : diskBar ? diskBar : aiBar ? aiBar : upBar ? upBar : me && me.verified === false ? `<div class="vb" role="status">${ic("warn")}<span>Confirm your email to start clipping. We sent a link to <b>${esc(me.email)}</b>.</span><button class="btn sm" data-act="resendverify">Send a new link</button></div>`
+
+  const progBanner = workingJobs.length > 0 ? `<div class="vb" style="background:var(--muted);border-radius:10px;padding:10px 16px;margin:0 0 14px;display:flex;align-items:center;gap:12px;font-size:13px">
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <b>${ic("scissors")} Processing & Clipping: ${jobPct}%</b>
+        <span>${workingJobs.length} video${workingJobs.length === 1 ? "" : "s"} in progress</span>
+      </div>
+      <div style="height:6px;background:rgba(0,0,0,0.08);border-radius:999px;overflow:hidden">
+        <div style="height:100%;width:${jobPct}%;background:var(--brand);border-radius:999px;transition:width .3s ease"></div>
+      </div>
+    </div>
+  </div>` : (inFlightCount > 0 ? `<div class="vb" style="background:var(--brand-soft);border-radius:10px;padding:10px 16px;margin:0 0 14px;display:flex;align-items:center;gap:12px;font-size:13px">
+    <div style="flex:1">
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+        <b>${ic("up")} Uploading clips to YouTube & Rumble: ${postPct}%</b>
+        <span>${postedCount} of ${totalPosts} posted (${inFlightCount} sending)</span>
+      </div>
+      <div style="height:6px;background:rgba(0,0,0,0.08);border-radius:999px;overflow:hidden">
+        <div style="height:100%;width:${postPct}%;background:var(--brand);border-radius:999px;transition:width .3s ease"></div>
+      </div>
+    </div>
+  </div>` : "");
+
+  put($("#vbanner"), progBanner ? progBanner : toolBar ? toolBar : diskBar ? diskBar : aiBar ? aiBar : upBar ? upBar : me && me.verified === false ? `<div class="vb" role="status">${ic("warn")}<span>Confirm your email to start clipping. We sent a link to <b>${esc(me.email)}</b>.</span><button class="btn sm" data-act="resendverify">Send a new link</button></div>`
     : kk && kk.ready === false && S.view !== "usage" ? `<div class="vb" role="status">${ic("bolt")}<span>${me?.is_admin ? "Add your AI key to let the AI pick clips and write titles. Until then, clips are picked by loudness." : "The AI isn't set up on this server yet, so clips are picked by loudness."}</span>${me?.is_admin && S.view !== "settings" ? `<button class="btn sm primary" data-act="go" data-v="settings" data-tab="ai">${ic("plus")}Add AI key</button>` : ""}</div>` : "");
   put($("#tpic"), pic); $("#tpic").classList.toggle("live", !!(c && (c.live_job || liveOn(c).length)));
   put($("#utabs"), tabs); moveInd(); $(".topbar").classList.toggle("tabbed", !!tabs);
