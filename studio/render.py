@@ -163,7 +163,7 @@ def _hook_events(hook, dur, y):
     return ev
 
 
-def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y, watermark="") -> str:
+def build_ass(words, start, end, hook, style_name, highlight, hook_y, cap_y, watermark="", credits="") -> str:
     st = STYLES.get(style_name, STYLES["bounce"])
     words = [dict(w, s=w["s"] - CAPTION_LEAD, e=w["e"] - CAPTION_LEAD) for w in words]
     strong = {_key(h) for h in highlight if _key(h)}
@@ -179,16 +179,20 @@ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour,
 Style: Cap,{st['font']},{st['size']},&H00{st['base']},&H00{st['base']},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,{st['outline']},0,5,0,0,0,1
 Style: Hook,{HOOK['font']},{HOOK['size']},&H00{HOOK['ink']},&H00{HOOK['ink']},&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1
 Style: Watermark,Poppins ExtraBold,34,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,2,0,0,0,1
+Style: Credits,Poppins ExtraBold,26,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,1,0,0,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     dur = end - start
     ev = _hook_events(_clean(hook), dur, hook_y)
-    wm_to_use = watermark or "@IShowSpeedVerse_IN"
-    wm_text = _clean(wm_to_use)
+    wm_text = _clean(watermark or "")
     if wm_text:
         ev.append(f"Dialogue: 0,{_ts(0)},{_ts(dur)},Watermark,,0,0,0,,{{\\an2\\pos(540,1750)\\fad(300,0)\\c&HFFFFFF&\\3c&H000000&\\bord3\\shad1\\fs34}}{wm_text}")
+    cr_text = _clean(credits or "")
+    if cr_text:
+        display_cr = cr_text if cr_text.lower().startswith("credits:") else f"Credits: {cr_text}"
+        ev.append(f"Dialogue: 0,{_ts(0)},{_ts(dur)},Credits,,0,0,0,,{{\\an1\\pos(60,1860)\\fad(300,0)\\c&HFFFFFF&\\3c&H000000&\\bord3\\shad1\\fs26}}{display_cr}")
     f = _Font.get(st["font"])
     inside = [dict(w, w=_clean(w["w"])) for w in words if w["s"] >= start - 0.05 and w["s"] < end]
     inside = sorted((w for w in inside if w["w"]), key=lambda w: w["s"])
@@ -260,7 +264,8 @@ def render_clip(src: Path, out_dir: Path, name: str, clip: dict, words: list, sr
     start, end = clip["start"], clip["end"]
     layout, fg_h, hook_y, cap_y = geometry(src_w, src_h, clip.get("layout", "blur"))
     ass = build_ass(words, start, end, clip.get("hook", ""), clip.get("style", "bounce"),
-                    clip.get("highlight_words", []), hook_y, cap_y, clip.get("watermark", ""))
+                    clip.get("highlight_words", []), hook_y, cap_y,
+                    clip.get("watermark", ""), clip.get("credits", ""))
     # The clip is made in a short work folder and moved into place afterwards. The caption step of ffmpeg cannot
     # open files whose full path is longer than 260 characters on Windows, which a data folder deep inside other
     # folders easily reaches. Inside the work folder every name is short and relative (a drive colon would also

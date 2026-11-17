@@ -19,7 +19,7 @@ DEFAULTS = {"name": "", "channel": "", "style": "bounce", "layout": "blur", "min
             "plan": "free", "decide_mode": "both", "must_clip_min": 0, "min_gap_min": 2,
             "trigger_words": "clip that, clip it",
             "autopost": False, "accounts": [], "post_min_score": 75, "post_gap_min": 45, "daily_cap": 6,
-            "privacy": "public", "post_footer": "Content by @IShowSpeedVerse_IN | #IShowSpeedVerse_IN", "watermark": "@IShowSpeedVerse_IN", "rate_per_1k": 0.0, "channels": {}}
+            "privacy": "public", "post_footer": "", "watermark": "", "credits": "", "rate_per_1k": 0.0, "channels": {}}
 PLATFORMS = ("youtube", "twitch", "kick")
 
 
@@ -131,6 +131,12 @@ def create(data: dict) -> dict:
     c = _fix({**DEFAULTS, **_clean(data)})
     if not c["name"]:
         raise ValueError("Give the creator a name.")
+    if not c.get("watermark"):
+        c["watermark"] = f"@{re.sub(r'[^a-zA-Z0-9_]', '', c['name'])}"
+    if not c.get("credits"):
+        c["credits"] = c["name"]
+    if not c.get("post_footer"):
+        c["post_footer"] = f"Credits: {c['credits']} | Content by {c['watermark']}"
     slug = re.sub(r"[^a-z0-9]+", "-", c["name"].lower()).strip("-")[:40] or "creator"
     cid, n = slug, 2
     while root(cid).exists():

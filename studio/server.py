@@ -1477,10 +1477,15 @@ def rumble_cookie(body: dict):
     _need_verified()
     from . import rumble
     cookie_val = body.get("cookie", "")
-    username = body.get("username", "Rumble Creator")
+    username = body.get("username", "RajShamani_Shorts")
+    creator_id = body.get("creator_id")
+    account_id = body.get("account_id")
     if not cookie_val:
         raise HTTPException(400, "Cookie value is required")
-    return rumble.save_cookie_session(cookie_val, username)
+    try:
+        return rumble.save_cookie_session(cookie_val, username=username, creator_id=creator_id, account_id=account_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.get("/api/rumble/status")

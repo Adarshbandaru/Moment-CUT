@@ -167,10 +167,25 @@ def on_clip_ready(job, clip):
 
 def _caption(clip, creator):
     base_tags = list(clip.get("hashtags", []))
-    if "IShowSpeedVerse_IN" not in base_tags:
-        base_tags.append("IShowSpeedVerse_IN")
-    tags = " ".join("#" + h for h in base_tags)
-    footer = creator.get("post_footer", "") or "Content by @IShowSpeedVerse_IN | #IShowSpeedVerse_IN"
+    cname = (creator.get("name") or "").strip()
+    cwm = (creator.get("watermark") or "").strip().lstrip("@")
+    for tag_cand in (cname, cwm):
+        clean = re.sub(r'[^a-zA-Z0-9_]', '', tag_cand)
+        if clean and clean not in base_tags:
+            base_tags.append(clean)
+    for t in ("viral", "trending", "shorts", "foryou", "latest"):
+        if t not in [x.lower() for x in base_tags] and len(base_tags) < 10:
+            base_tags.append(t)
+    tags = " ".join("#" + h.lstrip("#") for h in base_tags)
+
+    footer_parts = []
+    if creator.get("credits"):
+        footer_parts.append(f"Credits: {creator['credits']}")
+    if creator.get("watermark"):
+        footer_parts.append(f"Content by {creator['watermark']}")
+    default_footer = " | ".join(footer_parts)
+    footer = creator.get("post_footer", "") or default_footer
+
     pinned = clip.get("pinned_comment") or "Who else loved this moment? 👇"
     comment_cta = f"💬 {pinned}"
     return "\n\n".join(x for x in (clip.get("description", ""), comment_cta, tags, footer) if x)
@@ -204,8 +219,9 @@ def _post(p):
         creator = creators.get(job["creator"]) or dict(creators.DEFAULTS, name="clips")
         title, cap = clip.get("title") or clip.get("hook") or "Clip", _caption(clip, creator)
         if acc["platform"] == "youtube":
-            yt_cap = f"{cap}\n\nChannel: @IShowSpeedVerse_IN\n#Shorts #IShowSpeedVerse_IN"
-            yt_tags = list(set(clip.get("hashtags", []) + ["IShowSpeedVerse_IN", "Shorts"]))
+            chan_handle = creator.get("watermark") or (f"@{creator.get('name')}" if creator.get("name") else acc.get("name", ""))
+            yt_cap = f"{cap}\n\nChannel: {chan_handle}\n#Shorts"
+            yt_tags = list(set([t.lstrip("#") for t in clip.get("hashtags", [])] + ["Shorts", "Trending", "Viral"]))
             rid, url = accounts.youtube_upload(acc, path, title, yt_cap, yt_tags, creator["privacy"])
         elif acc["platform"] == "instagram":
             rid, url = accounts.instagram_upload(acc, path, f"{title}\n\n{cap}", job["id"])
@@ -213,7 +229,31 @@ def _post(p):
             rid, url = accounts.tiktok_upload(acc, path, f"{title}\n\n{cap}", creator["privacy"])
         elif acc["platform"] == "rumble":
             from . import rumble
-            rid, url = rumble.upload_video(path, title, cap, clip.get("hashtags", []), creator.get("privacy", "public"))
+            raw_tags = list(clip.get("hashtags", []))
+            words_in_title = re.findall(r'[a-zA-Z0-9_]{3,}', (clip.get("title") or "") + " " + (clip.get("hook") or ""))
+            cname = (creator.get("name") or "").strip()
+            cwm = (creator.get("watermark") or "").strip().lstrip("@")
+            rumble_tags = []
+            if cname:
+                rumble_tags.append(cname)
+            if cwm and cwm.lower() != cname.lower():
+                rumble_tags.append(cwm)
+            for t in raw_tags:
+                cl = t.replace("#", "").strip()
+                if cl and cl.lower() not in [x.lower() for x in rumble_tags]:
+                    rumble_tags.append(cl)
+            for w in words_in_title[:4]:
+                if w.lower() not in [x.lower() for x in rumble_tags]:
+                    rumble_tags.append(w)
+            for tr in ["viral", "trending", "shorts", "latest", "podcast", "clips", "entertainment"]:
+                if tr not in [x.lower() for x in rumble_tags] and len(rumble_tags) < 12:
+                    rumble_tags.append(tr)
+
+            rid, url = rumble.upload_video(
+                path, title, cap, rumble_tags,
+                creator.get("privacy", "public"),
+                account_id=acc.get("id"),
+            )
         else:
             raise RuntimeError("That kind of account is no longer supported.")
         p.update(status="posted", posted_at=time.time(), remote_id=rid, url=url, error=None)

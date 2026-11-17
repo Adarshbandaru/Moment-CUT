@@ -108,7 +108,7 @@ _lock = threading.RLock()
 on_clip_ready: list = []   # callbacks (job, clip), run once when a clip first finishes
 
 DEFAULTS = {"max_clips": 6, "min_len": 15, "max_len": 60, "style": "bounce", "layout": "blur", "quality": 720,
-            "range_start": None, "range_end": None, "watermark": "@IShowSpeedVerse_IN"}
+            "range_start": None, "range_end": None, "watermark": "", "credits": ""}
 
 
 LIMITS = {"max_clips": (0, 50), "min_len": (5, 120), "max_len": (10, 180), "quality": (360, 1080)}
@@ -127,7 +127,7 @@ def clean_options(options) -> dict:
             v = v if v in render.STYLES else DEFAULTS["style"]
         elif k == "layout":
             v = v if v in render.LAYOUTS else DEFAULTS["layout"]
-        elif k == "watermark":
+        elif k in ("watermark", "credits"):
             v = str(v).strip()[:100]
         else:                                    # range_start, range_end: seconds into the video
             v = float(v)
@@ -298,14 +298,17 @@ def create(source: dict, options: dict, enqueue=True, creator=None, kind="video"
     c = creators.get(creator) if creator else None
     if c:
         d = creators.root(c["id"]) / ("live" if kind == "live" else "videos") / jid
-        base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout", "watermark") if k in c}}
+        base = {**DEFAULTS, **{k: c[k] for k in ("max_clips", "min_len", "max_len", "style", "layout", "watermark", "credits") if k in c}}
         if not base.get("watermark") and c.get("name"):
-            base["watermark"] = c["name"]
+            base["watermark"] = f"@{re.sub(r'[^a-zA-Z0-9_]', '', c['name'])}"
+        if not base.get("credits") and c.get("name"):
+            base["credits"] = c["name"]
     else:
         d, base, creator = config.user_dir(ctx.uid()) / "jobs" / jid, dict(DEFAULTS), None
         all_c = creators.all_creators()
         if all_c:
-            base["watermark"] = all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN"
+            base["watermark"] = all_c[0].get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', all_c[0]['name'])}" if all_c[0].get("name") else "")
+            base["credits"] = all_c[0].get("credits") or all_c[0].get("name") or ""
     d.mkdir(parents=True)
     opts = {**base, **clean_options(options)}
     if opts["min_len"] >= opts["max_len"]:
@@ -492,18 +495,23 @@ def render_one(job, clip, words):
         if not clip.get("src"):
             clip["end"] = min(clip["end"], job["duration"])
         watermark = clip.get("watermark") or (job.get("options") or {}).get("watermark") or ""
-        if not watermark and job.get("creator"):
+        credits = clip.get("credits") or (job.get("options") or {}).get("credits") or ""
+        if (not watermark or not credits) and job.get("creator"):
             cr = creators.get(job["creator"])
             if cr:
-                watermark = cr.get("watermark") or cr.get("name") or ""
-        if not watermark:
+                if not watermark:
+                    watermark = cr.get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', cr['name'])}" if cr.get("name") else "")
+                if not credits:
+                    credits = cr.get("credits") or cr.get("name") or ""
+        if not watermark or not credits:
             all_c = creators.all_creators()
             if all_c:
-                watermark = all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeed_IN"
-            else:
-                watermark = "@IShowSpeed_IN"
+                if not watermark:
+                    watermark = all_c[0].get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', all_c[0]['name'])}" if all_c[0].get("name") else "")
+                if not credits:
+                    credits = all_c[0].get("credits") or all_c[0].get("name") or ""
         local = dict(clip, start=clip["start"] - off, end=clip["end"] - off,
-                     hook=roman.to_roman(clip.get("hook") or ""), watermark=watermark)
+                     hook=roman.to_roman(clip.get("hook") or ""), watermark=watermark, credits=credits)
         span = [round(clip["start"], 2), round(clip["end"], 2), "en2"]      # "en2": captions made always-English
         if clip.get("fixed_for") == span and clip.get("fixed_words") and not any(
                 roman.needs_roman(w.get("w", "")) for w in clip["fixed_words"]):
@@ -811,14 +819,20 @@ def _run_job(job):
         model = ai.get("model") or model
         if ai.get("note"):
             notes.append(ai["note"])
-        wm = o.get("watermark") or (creators.get(job.get("creator")) or {}).get("watermark") or (creators.get(job.get("creator")) or {}).get("name") or "@IShowSpeedVerse_IN"
-        if not wm:
+        cr = creators.get(job.get("creator")) or {}
+        wm = o.get("watermark") or cr.get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', cr['name'])}" if cr.get("name") else "")
+        credits = o.get("credits") or cr.get("credits") or cr.get("name") or ""
+        if not wm or not credits:
             all_c = creators.all_creators()
-            wm = (all_c[0].get("watermark") or all_c[0].get("name") or "@IShowSpeedVerse_IN") if all_c else "@IShowSpeedVerse_IN"
+            if all_c:
+                if not wm:
+                    wm = all_c[0].get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', all_c[0]['name'])}" if all_c[0].get("name") else "")
+                if not credits:
+                    credits = all_c[0].get("credits") or all_c[0].get("name") or ""
         for c in found:
             c.update(id=f"clip{len(job['clips']) + 1:02d}", start=round(c["start"] + shift, 2),
                      end=round(c["end"] + shift, 2), style=o["style"], layout=o["layout"],
-                     watermark=wm, status="queued", version=0)
+                     watermark=wm, credits=credits, status="queued", version=0)
             job["clips"].append(c)
             futures.append((renders.submit(ctx.bind(make), c, list(words)), c))
         job["ai"] = {"model": model, "tokens": tokens, "note": "", "log": notes[-5:]}

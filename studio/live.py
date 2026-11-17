@@ -453,9 +453,10 @@ class Session:
 
     def _add_clip(self, c):
         self.n += 1
-        wm = self.settings.get("watermark") or self.creator.get("watermark") or self.creator.get("name") or "@IShowSpeedVerse_IN"
+        wm = self.settings.get("watermark") or self.creator.get("watermark") or (f"@{re.sub(r'[^a-zA-Z0-9_]', '', self.creator.get('name', ''))}" if self.creator.get("name") else "")
+        credits = self.settings.get("credits") or self.creator.get("credits") or self.creator.get("name") or ""
         c.update(id=f"clip{self.n:03d}", style=self.settings["style"], layout=self.settings["layout"],
-                 watermark=wm, status="queued", version=0, made_at=time.time())
+                 watermark=wm, credits=credits, status="queued", version=0, made_at=time.time())
         with self.lock:
             self.job["clips"].append(c)
         jobs.save(self.job)

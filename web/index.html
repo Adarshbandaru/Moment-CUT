@@ -2013,7 +2013,9 @@ function drawCreatorForm() {
         <label class="f">Shortest clip (seconds)<input data-k="min_len" type="number" value="${c.min_len}"></label>
         <label class="f">Longest clip (seconds)<input data-k="max_len" type="number" value="${c.max_len}"></label>
         <label class="f">Clips per video<input data-k="max_clips" type="number" value="${c.max_clips}"></label>
-        <label class="f">Minutes of live stream to keep<input data-k="buffer_min" type="number" value="${c.buffer_min}"></label></div></div>
+        <label class="f">Minutes of live stream to keep<input data-k="buffer_min" type="number" value="${c.buffer_min}"></label>
+        <label class="f">Watermark / Handle (e.g. @RajShamani_Shorts)<input data-k="watermark" value="${esc(c.watermark || '')}" placeholder="@RajShamani_Shorts"><small class="sub">Bottom-center handle on video</small></label>
+        <label class="f">Down-left Credits (e.g. Raj Shamani)<input data-k="credits" value="${esc(c.credits || '')}" placeholder="Raj Shamani"><small class="sub">Displayed as "Credits: &lt;Name&gt;" in bottom-left</small></label></div></div>
     <div class="card"><h2>Posting</h2><p class="help">${A.length ? "Choose the accounts this creator's clips go to. One account can be shared by several creators." : "No accounts are connected yet. Connect one in Settings, then come back."}</p>
       ${A.length ? `<div class="row" style="margin-bottom:16px">${A.map(a => `<label class="ck"><input type="checkbox" data-acc value="${esc(a.id)}" ${c.accounts.includes(a.id) ? "checked" : ""}>${esc(a.label)} · ${esc(a.name)}</label>`).join("")}</div>` : `<button class="btn" data-act="go" data-v="settings" style="margin-bottom:16px">${ic("cog")}Open Settings</button>`}
       <div class="fields"><label class="sw span"><input type="checkbox" data-k="autopost" ${c.autopost ? "checked" : ""}><span>Post new clips automatically<small>Clips that score high enough go out without you approving them.</small></span></label>
@@ -2662,15 +2664,17 @@ document.addEventListener("click", async e => {
       return;
     }
     if (a === "rumblecookie") {
-      const c = prompt("Paste your Rumble session cookie value (u_s):");
+      const u = prompt("Enter your Rumble channel name or handle:", "RajShamani_Shorts") || "RajShamani_Shorts";
+      const c = prompt("Paste your Rumble cookies (supports Cookie-Editor JSON, full Cookie header, or u_s token):");
       if (!c) return;
-      const u = prompt("Enter your Rumble channel name (optional):", "Rumble Creator") || "Rumble Creator";
       try {
-        await send("/api/rumble/cookie", {cookie: c.trim(), username: u.trim()});
-        toast("Rumble account connected successfully!", "ok");
+        const curCid = (S.view && S.view.startsWith("c:")) ? S.view.split(":")[1] : undefined;
+        const res = await send("/api/rumble/cookie", {cookie: c.trim(), username: u.trim(), creator_id: curCid});
+        toast("Rumble account " + (res.username || u) + " connected successfully!", "ok");
+        await tick();
         drawSettings();
       } catch (e) {
-        toast(e.message, "bad");
+        toast("Rumble cookie error: " + e.message, "bad");
       }
       return;
     }
